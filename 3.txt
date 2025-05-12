@@ -1,62 +1,44 @@
-You’re absolutely right—creating multiple toggle functions becomes repetitive as the number of checkboxes grows. To simplify, you can generalize the toggle logic using a key-based approach.
+To implement a function in Angular that downloads data as a CSV (or Excel) file only if the data has length > 0, you can use the following approach:
 
-Refactored Solution (Reusable Function)
+1. Add the ExportToCSV method in your component (exclusion-rule.component.ts):
 
-1. Component TS
+ExportToCSV() {
+  if (!this.excluded || this.excluded.length === 0) {
+    console.warn('No data to export');
+    return;
+  }
 
-Use a signal-based Record<string, boolean> map:
+  const csvRows = [];
+  const headers = Object.keys(this.excluded[0]);
+  csvRows.push(headers.join(','));
 
-checkboxStates = signal<Record<string, boolean>>({
-  FO: false,
-  BO: false,
-});
+  for (const row of this.excluded) {
+    const values = headers.map(header => {
+      const escaped = ('' + row[header]).replace(/"/g, '\\"');
+      return `"${escaped}"`;
+    });
+    csvRows.push(values.join(','));
+  }
 
-toggleCheckbox(key: string) {
-  this.checkboxStates.update(state => ({
-    ...state,
-    [key]: !state[key],
-  }));
+  const csvData = csvRows.join('\n');
+  const blob = new Blob([csvData], { type: 'text/csv' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.setAttribute('href', url);
+  a.setAttribute('download', 'excluded_data.csv');
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
-isChecked(key: string): boolean {
-  return this.checkboxStates()[key];
-}
+2. HTML already has the click binding:
 
+<button (click)="ExportToCSV()">Export</button>
 
+Explanation:
+	•	Checks if this.excluded is non-empty.
+	•	Extracts headers from the first object.
+	•	Escapes and joins each row.
+	•	Triggers a download with a temporary anchor tag.
 
-⸻
-
-2. Component HTML
-
-Use the same method and signal for both checkboxes:
-
-<main>
-  <div class="upload">
-    <pre>Exclusion rules</pre>
-    <div class="container">
-      <mat-checkbox
-        [checked]="isChecked('FO')"
-        (change)="toggleCheckbox('FO')"
-      >
-        FO
-      </mat-checkbox>
-    </div>
-
-    <div class="container">
-      <mat-checkbox
-        [checked]="isChecked('BO')"
-        (change)="toggleCheckbox('BO')"
-      >
-        BO
-      </mat-checkbox>
-    </div>
-  </div>
-</main>
-
-
-
-⸻
-
-Now you can easily add more checkboxes without writing new functions.
-
-Would you like this scalable with dynamic rendering (e.g. from an array of keys like ['FO', 'BO', 'CO'])?
+Let me know if you’d prefer to download Excel (.xlsx) instead of CSV, as that requires a library like xlsx.
