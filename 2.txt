@@ -1,151 +1,160 @@
-To convert your existing excludeAndTransform() method to handle a POST request and accept dynamic filter values (like selected column, function such as "in", and input box value) from the frontend, follow these steps:
+Here’s a simple, full working Angular + Spring Boot example that uploads an Excel file from Angular to Spring Boot via a POST request (with FormData), reads the Excel file, applies a simple filter in the backend, and returns filtered data to the frontend.
 
 ⸻
 
-1. Update the Spring Boot Backend
-
-DTO (Data Transfer Object)
-
-Create a DTO class to receive the payload from Angular:
-
-// File: ExclusionRequest.java
-public class ExclusionRequest {
-    private String selectedCol;
-    private String function;
-    private String value;
-
-    // Getters and Setters
-    public String getSelectedCol() {
-        return selectedCol;
-    }
-    public void setSelectedCol(String selectedCol) {
-        this.selectedCol = selectedCol;
-    }
-
-    public String getFunction() {
-        return function;
-    }
-    public void setFunction(String function) {
-        this.function = function;
-    }
-
-    public String getValue() {
-        return value;
-    }
-    public void setValue(String value) {
-        this.value = value;
-    }
-}
-
+✅ Use Case:
+	•	No S3, No DB
+	•	Excel file is uploaded via an <input type="file">
+	•	Sent as FormData to Spring Boot
+	•	Spring Boot reads the Excel file, filters rows
+	•	Returns filtered rows back to frontend
 
 ⸻
 
-Update Controller
+1. Angular Frontend (Angular 17+, Standalone)
 
-Update your ReconciliationController.java to accept this POST request:
+upload.component.ts
 
-@PostMapping("/exclude")
-public ReconciliationResult exclude(@RequestBody ExclusionRequest request) {
-    return reconciliationService.excludeAndTransform(request, algoPath, starPath);
-}
+import { Component } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 
+@Component({
+  selector: 'app-upload',
+  standalone: true,
+  imports: [CommonModule, FormsModule],
+  template: `
+    <h2>Upload Excel File</h2>
+    <input type="file" (change)="onFileSelected($event)" />
+    <button (click)="upload()">Upload & Filter</button>
 
-⸻
+    <h3>Filtered Result:</h3>
+    <pre>{{ filteredData | json }}</pre>
+  `
+})
+export class UploadComponent {
+  selectedFile: File | null = null;
+  filteredData: any;
 
-Update Service Method
+  constructor(private http: HttpClient) {}
 
-Modify excludeAndTransform() in ReconciliationService.java to accept the request and apply filtering based on function like "in" (i.e., contains):
-
-public ReconciliationResult excludeAndTransform(ExclusionRequest request, String algoPath, String starPath) {
-    try {
-        CSVParser starParser = CSVFormat.DEFAULT.withFirstRecordAsHeader().parse(new FileReader(starPath));
-        List<CSVRecord> starRecords = starParser.getRecords();
-
-        excludedRecords.clear();
-        nonExcludedStar.clear();
-
-        for (CSVRecord record : starRecords) {
-            String fieldValue = record.get(request.getSelectedCol()).toLowerCase().trim();
-            String inputValue = request.getValue().toLowerCase().trim();
-            String function = request.getFunction().toLowerCase();
-
-            boolean shouldExclude = false;
-
-            switch (function) {
-                case "in":
-                    shouldExclude = fieldValue.contains(inputValue);
-                    break;
-                case "equals":
-                    shouldExclude = fieldValue.equals(inputValue);
-                    break;
-                case "is null":
-                    shouldExclude = fieldValue == null || fieldValue.isEmpty();
-                    break;
-                case "not in":
-                    shouldExclude = !fieldValue.contains(inputValue);
-                    break;
-                // Add more logic as per your functions
-            }
-
-            if (shouldExclude) {
-                excludedRecords.add(new Record("ExcludedKey", fieldValue, "Excluded by filter"));
-            } else {
-                nonExcludedStar.add(record);
-            }
-        }
-
-        return new ReconciliationResult(Collections.emptyList(), Collections.emptyList(), excludedRecords);
-
-    } catch (Exception e) {
-        e.printStackTrace();
-        return new ReconciliationResult(); // handle errors gracefully
-    }
-}
-
-
-⸻
-
-2. Angular Frontend
-
-Payload Sending Example
-
-Update your Angular method that sends data:
-
-ExcludeColumns(data: string) {
-  let payload: any = {};
-
-  if (data === 'FO') {
-    payload = {
-      selectedCol: this.selectedCol1,
-      function: this.function1,
-      value: this.valueFO,
-    };
-  } else if (data === 'BO') {
-    payload = {
-      selectedCol: this.selectedCol2,
-      function: this.function2,
-      value: this.valueBO,
-    };
+  onFileSelected(event: any) {
+    this.selectedFile = event.target.files[0];
   }
 
-  this.exclusionService.exclude(payload).subscribe({
-    next: (res) => {
-      this.excluded = res;
-      console.log(this.excluded);
-    },
-    error: (e) => console.error(e, "Error")
-  });
+  upload() {
+    if (!this.selectedFile) return;
+
+    const formData = new FormData();
+    formData.append('file', this.selectedFile);
+
+    this.http.post<any[]>('http://localhost:8080/api/excel/upload', formData)
+      .subscribe(data => {
+        this.filteredData = data;
+      });
+  }
 }
 
 
 ⸻
 
-3. Summary
-	•	Frontend builds and sends JSON payload with selected column, function ("in" / "equals"), and value.
-	•	Backend Controller receives it using @RequestBody and sends it to service.
-	•	Service applies logic based on function and filters records accordingly.
-	•	Response is sent back and handled on frontend.
+2. Spring Boot Backend
+
+✅ Add these dependencies in pom.xml:
+
+<dependency>
+  <groupId>org.apache.poi</groupId>
+  <artifactId>poi-ooxml</artifactId>
+  <version>5.2.3</version>
+</dependency>
+
 
 ⸻
 
-Would you like help extending support for multiple functions like startsWith, endsWith, or regex too?
+✅ ExcelController.java
+
+@RestController
+@RequestMapping("/api/excel")
+public class ExcelController {
+
+    @PostMapping("/upload")
+    public List<Map<String, String>> handleFileUpload(@RequestParam("file") MultipartFile file) {
+        return ExcelService.parseAndFilter(file);
+    }
+}
+
+
+⸻
+
+✅ ExcelService.java
+
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.InputStream;
+import java.util.*;
+import java.util.stream.Collectors;
+
+public class ExcelService {
+
+    public static List<Map<String, String>> parseAndFilter(MultipartFile file) {
+        try (InputStream is = file.getInputStream(); Workbook workbook = new XSSFWorkbook(is)) {
+            Sheet sheet = workbook.getSheetAt(0);
+            List<Map<String, String>> rows = new ArrayList<>();
+
+            Row headerRow = sheet.getRow(0);
+            int numCols = headerRow.getPhysicalNumberOfCells();
+
+            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+                Row row = sheet.getRow(i);
+                Map<String, String> rowMap = new HashMap<>();
+
+                for (int j = 0; j < numCols; j++) {
+                    String key = headerRow.getCell(j).getStringCellValue();
+                    String value = getCellValueAsString(row.getCell(j));
+                    rowMap.put(key, value);
+                }
+
+                rows.add(rowMap);
+            }
+
+            // Sample filter: only rows where "Name" column contains "John"
+            return rows.stream()
+                    .filter(map -> map.get("Name") != null && map.get("Name").contains("John"))
+                    .collect(Collectors.toList());
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to parse Excel file", e);
+        }
+    }
+
+    private static String getCellValueAsString(Cell cell) {
+        if (cell == null) return "";
+        switch (cell.getCellType()) {
+            case STRING: return cell.getStringCellValue();
+            case NUMERIC: return String.valueOf(cell.getNumericCellValue());
+            case BOOLEAN: return String.valueOf(cell.getBooleanCellValue());
+            default: return "";
+        }
+    }
+}
+
+
+⸻
+
+✅ Result:
+	•	Uploads Excel file via HTTP POST
+	•	Backend reads and filters rows (e.g., name contains “John”)
+	•	Returns filtered data back to frontend
+	•	Displayed using json pipe in Angular
+
+⸻
+
+Let me know if you want:
+	•	File download option
+	•	Dynamic filter inputs
+	•	Use case with pagination or column selection
+
+Want this in a zip or GitHub repo format?
