@@ -1,160 +1,22 @@
-Here’s a simple, full working Angular + Spring Boot example that uploads an Excel file from Angular to Spring Boot via a POST request (with FormData), reads the Excel file, applies a simple filter in the backend, and returns filtered data to the frontend.
+@PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+public ResponseEntity<Map<String, String>> upload(@RequestPart("file") MultipartFile file) {
+    try {
+        System.out.println("Received file: " + file.getOriginalFilename());
 
-⸻
+        String key = s3Service.uploadFile(file); // 🔥 likely failing here
+        String url = s3Service.generatePresignedUrl(key);
 
-✅ Use Case:
-	•	No S3, No DB
-	•	Excel file is uploaded via an <input type="file">
-	•	Sent as FormData to Spring Boot
-	•	Spring Boot reads the Excel file, filters rows
-	•	Returns filtered rows back to frontend
+        Map<String, String> response = new HashMap<>();
+        response.put("message", "Upload successful");
+        response.put("url", url);
+        return ResponseEntity.ok(response);
+    } catch (Exception e) {
+        // Print full stack trace for debugging
+        e.printStackTrace();
 
-⸻
-
-1. Angular Frontend (Angular 17+, Standalone)
-
-upload.component.ts
-
-import { Component } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-
-@Component({
-  selector: 'app-upload',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
-    <h2>Upload Excel File</h2>
-    <input type="file" (change)="onFileSelected($event)" />
-    <button (click)="upload()">Upload & Filter</button>
-
-    <h3>Filtered Result:</h3>
-    <pre>{{ filteredData | json }}</pre>
-  `
-})
-export class UploadComponent {
-  selectedFile: File | null = null;
-  filteredData: any;
-
-  constructor(private http: HttpClient) {}
-
-  onFileSelected(event: any) {
-    this.selectedFile = event.target.files[0];
-  }
-
-  upload() {
-    if (!this.selectedFile) return;
-
-    const formData = new FormData();
-    formData.append('file', this.selectedFile);
-
-    this.http.post<any[]>('http://localhost:8080/api/excel/upload', formData)
-      .subscribe(data => {
-        this.filteredData = data;
-      });
-  }
-}
-
-
-⸻
-
-2. Spring Boot Backend
-
-✅ Add these dependencies in pom.xml:
-
-<dependency>
-  <groupId>org.apache.poi</groupId>
-  <artifactId>poi-ooxml</artifactId>
-  <version>5.2.3</version>
-</dependency>
-
-
-⸻
-
-✅ ExcelController.java
-
-@RestController
-@RequestMapping("/api/excel")
-public class ExcelController {
-
-    @PostMapping("/upload")
-    public List<Map<String, String>> handleFileUpload(@RequestParam("file") MultipartFile file) {
-        return ExcelService.parseAndFilter(file);
+        // Return the error to frontend
+        Map<String, String> error = new HashMap<>();
+        error.put("error", "Upload failed: " + e.getMessage());
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
     }
 }
-
-
-⸻
-
-✅ ExcelService.java
-
-import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.springframework.web.multipart.MultipartFile;
-
-import java.io.InputStream;
-import java.util.*;
-import java.util.stream.Collectors;
-
-public class ExcelService {
-
-    public static List<Map<String, String>> parseAndFilter(MultipartFile file) {
-        try (InputStream is = file.getInputStream(); Workbook workbook = new XSSFWorkbook(is)) {
-            Sheet sheet = workbook.getSheetAt(0);
-            List<Map<String, String>> rows = new ArrayList<>();
-
-            Row headerRow = sheet.getRow(0);
-            int numCols = headerRow.getPhysicalNumberOfCells();
-
-            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
-                Row row = sheet.getRow(i);
-                Map<String, String> rowMap = new HashMap<>();
-
-                for (int j = 0; j < numCols; j++) {
-                    String key = headerRow.getCell(j).getStringCellValue();
-                    String value = getCellValueAsString(row.getCell(j));
-                    rowMap.put(key, value);
-                }
-
-                rows.add(rowMap);
-            }
-
-            // Sample filter: only rows where "Name" column contains "John"
-            return rows.stream()
-                    .filter(map -> map.get("Name") != null && map.get("Name").contains("John"))
-                    .collect(Collectors.toList());
-
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to parse Excel file", e);
-        }
-    }
-
-    private static String getCellValueAsString(Cell cell) {
-        if (cell == null) return "";
-        switch (cell.getCellType()) {
-            case STRING: return cell.getStringCellValue();
-            case NUMERIC: return String.valueOf(cell.getNumericCellValue());
-            case BOOLEAN: return String.valueOf(cell.getBooleanCellValue());
-            default: return "";
-        }
-    }
-}
-
-
-⸻
-
-✅ Result:
-	•	Uploads Excel file via HTTP POST
-	•	Backend reads and filters rows (e.g., name contains “John”)
-	•	Returns filtered data back to frontend
-	•	Displayed using json pipe in Angular
-
-⸻
-
-Let me know if you want:
-	•	File download option
-	•	Dynamic filter inputs
-	•	Use case with pagination or column selection
-
-Want this in a zip or GitHub repo format?
