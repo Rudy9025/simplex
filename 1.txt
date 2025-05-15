@@ -1,3 +1,42 @@
+<form (ngSubmit)="uploadFile()">
+  <input type="file" (change)="onFileSelected($event)" />
+  <button type="submit">Upload</button>
+</form>
+import { HttpClient } from '@angular/common/http';
+import { Component } from '@angular/core';
+
+@Component({
+  selector: 'app-upload',
+  templateUrl: './upload.component.html'
+})
+export class UploadComponent {
+  selectedFile: File | null = null;
+
+  constructor(private http: HttpClient) {}
+
+  onFileSelected(event: any) {
+    this.selectedFile = event.target.files[0];
+  }
+
+  uploadFile() {
+    if (!this.selectedFile) return;
+
+    const formData = new FormData();
+    formData.append('file', this.selectedFile);
+
+    this.http.post('http://localhost:8080/upload', formData)
+      .subscribe({
+        next: response => console.log('Upload successful', response),
+        error: error => console.error('Upload failed', error)
+      });
+  }
+}
+
+
+
+
+
+
 Thanks for the follow-up — your questions are spot on. Let's break it down clearly:
 
 ---
