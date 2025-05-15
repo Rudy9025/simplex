@@ -1,44 +1,227 @@
-To implement a function in Angular that downloads data as a CSV (or Excel) file only if the data has length > 0, you can use the following approach:
+Here’s a complete example of a file upload system using Angular (frontend) and Spring Boot (backend) where the uploaded file (CSV or Excel) can have dynamic columns.
 
-1. Add the ExportToCSV method in your component (exclusion-rule.component.ts):
+⸻
 
-ExportToCSV() {
-  if (!this.excluded || this.excluded.length === 0) {
-    console.warn('No data to export');
-    return;
+🔧 Requirements
+
+Frontend
+	•	Angular 17+
+	•	Angular Material (for UI convenience – optional)
+
+Backend
+	•	Spring Boot 3+
+	•	Apache POI (for Excel parsing)
+	•	OpenCSV (for CSV parsing)
+
+⸻
+
+✅ 1. Angular Frontend Code (File Upload Form)
+
+➤ file-upload.component.html
+
+<h2>Upload CSV or Excel</h2>
+<input type="file" (change)="onFileChange($event)" />
+<button (click)="upload()" [disabled]="!file">Upload</button>
+
+
+⸻
+
+➤ file-upload.component.ts
+
+import { Component } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+
+@Component({
+  selector: 'app-file-upload',
+  templateUrl: './file-upload.component.html'
+})
+export class FileUploadComponent {
+  file: File | null = null;
+
+  constructor(private http: HttpClient) {}
+
+  onFileChange(event: any) {
+    this.file = event.target.files[0];
   }
 
-  const csvRows = [];
-  const headers = Object.keys(this.excluded[0]);
-  csvRows.push(headers.join(','));
+  upload() {
+    if (!this.file) return;
 
-  for (const row of this.excluded) {
-    const values = headers.map(header => {
-      const escaped = ('' + row[header]).replace(/"/g, '\\"');
-      return `"${escaped}"`;
-    });
-    csvRows.push(values.join(','));
+    const formData = new FormData();
+    formData.append('file', this.file);
+
+    this.http.post<any>('http://localhost:8080/api/upload', formData)
+      .subscribe({
+        next: response => console.log('Upload successful:', response),
+        error: err => console.error('Upload error:', err)
+      });
   }
-
-  const csvData = csvRows.join('\n');
-  const blob = new Blob([csvData], { type: 'text/csv' });
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.setAttribute('href', url);
-  a.setAttribute('download', 'excluded_data.csv');
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
 }
 
-2. HTML already has the click binding:
 
-<button (click)="ExportToCSV()">Export</button>
+⸻
 
-Explanation:
-	•	Checks if this.excluded is non-empty.
-	•	Extracts headers from the first object.
-	•	Escapes and joins each row.
-	•	Triggers a download with a temporary anchor tag.
+➤ Import HttpClient in Angular
 
-Let me know if you’d prefer to download Excel (.xlsx) instead of CSV, as that requires a library like xlsx.
+In app.module.ts:
+
+import { HttpClientModule } from '@angular/common/http';
+
+@NgModule({
+  declarations: [/* your components */],
+  imports: [HttpClientModule /* other modules */],
+  bootstrap: [/* your bootstrap component */]
+})
+export class AppModule { }
+
+
+⸻
+
+✅ 2. Spring Boot Backend Code (Dynamic Column Parsing)
+
+➤ pom.xml dependencies
+
+<!-- Apache POI for Excel -->
+<dependency>
+    <groupId>org.apache.poi</groupId>
+    <artifactId>poi-ooxml</artifactId>
+    <version>5.2.3</version>
+</dependency>
+
+<!-- OpenCSV for CSV -->
+<dependency>
+    <groupId>com.opencsv</groupId>
+    <artifactId>opencsv</artifactId>
+    <version>5.7.1</version>
+</dependency>
+
+
+⸻
+
+➤ FileUploadController.java
+
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import com.opencsv.CSVReader;
+import java.io.*;
+import java.util.*;
+
+@RestController
+@RequestMapping("/api")
+@CrossOrigin(origins = "http://localhost:4200") // Change if needed
+public class FileUploadController {
+
+    @PostMapping("/upload")
+    public ResponseEntity<?> handleFileUpload(@RequestParam("file") MultipartFile file) throws Exception {
+        String filename = file.getOriginalFilename();
+
+        List<Map<String, String>> data;
+
+        if (filename != null && filename.endsWith(".csv")) {
+            data = parseCSV(file.getInputStream());
+        } else {
+            data = parseExcel(file.getInputStream());
+        }
+
+        // For debugging: print the parsed data
+        data.forEach(System.out::println);
+
+        return ResponseEntity.ok(Map.of("rowsParsed", data.size()));
+    }
+
+    private List<Map<String, String>> parseCSV(InputStream is) throws Exception {
+        List<Map<String, String>> result = new ArrayList<>();
+        try (CSVReader reader = new CSVReader(new InputStreamReader(is))) {
+            String[] headers = reader.readNext();
+            if (headers == null) return result;
+
+            String[] line;
+            while ((line = reader.readNext()) != null) {
+                Map<String, String> row = new LinkedHashMap<>();
+                for (int i = 0; i < headers.length && i < line.length; i++) {
+                    row.put(headers[i], line[i]);
+                }
+                result.add(row);
+            }
+        }
+        return result;
+    }
+
+    private List<Map<String, String>> parseExcel(InputStream is) throws Exception {
+        List<Map<String, String>> result = new ArrayList<>();
+        try (Workbook workbook = new XSSFWorkbook(is)) {
+            Sheet sheet = workbook.getSheetAt(0);
+            Iterator<Row> rowIterator = sheet.iterator();
+
+            if (!rowIterator.hasNext()) return result;
+            Row headerRow = rowIterator.next();
+
+            List<String> headers = new ArrayList<>();
+            headerRow.forEach(cell -> headers.add(cell.getStringCellValue()));
+
+            while (rowIterator.hasNext()) {
+                Row row = rowIterator.next();
+                Map<String, String> rowData = new LinkedHashMap<>();
+
+                for (int i = 0; i < headers.size(); i++) {
+                    Cell cell = row.getCell(i);
+                    String value = "";
+                    if (cell != null) {
+                        switch (cell.getCellType()) {
+                            case STRING -> value = cell.getStringCellValue();
+                            case NUMERIC -> value = String.valueOf(cell.getNumericCellValue());
+                            case BOOLEAN -> value = String.valueOf(cell.getBooleanCellValue());
+                            default -> value = "";
+                        }
+                    }
+                    rowData.put(headers.get(i), value);
+                }
+
+                result.add(rowData);
+            }
+        }
+        return result;
+    }
+}
+
+
+⸻
+
+➤ Enable File Uploads
+
+In application.properties:
+
+spring.servlet.multipart.max-file-size=10MB
+spring.servlet.multipart.max-request-size=10MB
+
+
+⸻
+
+✅ 3. Run the App
+
+Backend:
+
+./mvnw spring-boot:run
+
+Frontend:
+
+ng serve
+
+
+⸻
+
+✅ Example Upload
+
+You can upload any .csv or .xlsx file with any number of columns. The backend will parse it dynamically and return a basic response. You can expand this to store in a DB, validate columns, etc.
+
+⸻
+
+Would you like me to extend this with:
+	•	Column validation rules?
+	•	Database insertion?
+	•	Preview parsed file in Angular?
+
+Let me know and I can assist with those next.
