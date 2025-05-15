@@ -1,3 +1,86 @@
+Thanks for the screenshot — two key issues are happening here:
+
+---
+
+## ❌ Error 1: `net::ERR_FAILED 413 (Content Too Large)`
+
+This means the **file size you're uploading exceeds the limit** allowed by your Spring Boot backend.
+
+### ✅ Fix: Increase max upload size in `application.properties`:
+
+```properties
+# Increase max file size (adjust to your needs)
+spring.servlet.multipart.max-file-size=100MB
+spring.servlet.multipart.max-request-size=100MB
+```
+
+If you're using `application.yml`:
+
+```yaml
+spring:
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+```
+
+Then restart your backend.
+
+---
+
+## ❌ Error 2: CORS Policy - No `Access-Control-Allow-Origin`
+
+Your Angular app (`localhost:4200`) is making a request to Spring Boot (`localhost:8080`), and Spring is **blocking it** due to missing CORS headers.
+
+### ✅ Fix: Allow CORS in your controller
+
+In `S3Controller.java`, **you already have this**, but make sure it’s applied correctly:
+
+```java
+@CrossOrigin(origins = "http://localhost:4200")
+@RestController
+@RequestMapping("/upload")
+public class S3Controller {
+    // ...
+}
+```
+
+If that doesn't solve it globally, you can use a **CORS configuration bean**:
+
+### ✅ Global CORS Configuration (Optional but Recommended)
+
+```java
+@Configuration
+public class WebConfig {
+
+    @Bean
+    public WebMvcConfigurer corsConfigurer() {
+        return new WebMvcConfigurer() {
+            @Override
+            public void addCorsMappings(CorsRegistry registry) {
+                registry.addMapping("/**")
+                        .allowedOrigins("http://localhost:4200")
+                        .allowedMethods("*");
+            }
+        };
+    }
+}
+```
+
+---
+
+## 🔁 Final Steps to Fix:
+
+1. ✅ Increase file size limit in `application.properties`.
+2. ✅ Add or correct `@CrossOrigin` in your controller.
+3. ✅ Optionally configure CORS globally via `WebConfig`.
+4. 🔄 Restart your backend and retry the upload from Angular.
+
+Let me know if you'd like me to generate a zipped Spring Boot + Angular demo for this full setup.
+
+
+
+
 package com.example.s3upload.controller;
 
 import com.example.s3upload.service.S3Service;
