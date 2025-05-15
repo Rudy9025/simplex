@@ -1,3 +1,17 @@
+public class MainApplication {
+    public static void main(String[] args) {
+        // Disable AWS SDK SSL certificate validation (⚠️ for testing only)
+        System.setProperty("com.amazonaws.sdk.disableCertChecking", "true");
+
+        SpringApplication.run(MainApplication.class, args);
+    }
+}
+
+
+
+
+
+
 @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
 public ResponseEntity<Map<String, String>> upload(@RequestPart("file") MultipartFile file) {
     try {
