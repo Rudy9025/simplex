@@ -1,3 +1,20 @@
+<dependency>
+  <groupId>software.amazon.awssdk</groupId>
+  <artifactId>s3</artifactId>
+  <version>2.20.20</version>
+</dependency>
+
+
+s3.bucket=YOUR_BUCKET_NAME
+s3.accessKey=YOUR_ACCESS_KEY
+s3.secretKey=YOUR_SECRET_KEY
+s3.endpoint=https://s3browser.group.echonet
+s3.region=emea
+
+
+
+
+
 <form (ngSubmit)="uploadFile()">
   <input type="file" (change)="onFileSelected($event)" />
   <button type="submit">Upload</button>
