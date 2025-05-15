@@ -1,62 +1,135 @@
-To dynamically adjust the number of rows shown in a <p-table> (PrimeNG table) based on screen height in Angular, you can bind the [rows] input to a variable and calculate its value at runtime based on the screen height.
+Thanks for the follow-up — your questions are spot on. Let's break it down clearly:
 
-Here’s how you can do it:
+---
 
-⸻
+## 🔍 1. What is this line?
 
-Step 1: Update Component Code (TypeScript)
+```java
+System.getenv("AWS_ACCESS_KEY_ID"), System.getenv("AWS_SECRET_ACCESS_KEY")
+```
 
-import { Component, HostListener, OnInit } from '@angular/core';
+These are **environment variables**, typically used to avoid hardcoding sensitive credentials (like access keys) in the source code.
 
-@Component({
-  selector: 'app-your-component',
-  templateUrl: './your-component.component.html',
-})
-export class YourComponent implements OnInit {
-  customers: any[] = []; // your data
-  rows: number = 5;
+But **you don’t need this** if you're storing keys in `application.properties`, which **you are**.
 
-  ngOnInit() {
-    this.setRowsBasedOnScreenHeight();
-  }
+So you can **replace that line** with your credentials directly injected from Spring config.
 
-  @HostListener('window:resize', ['$event'])
-  onResize() {
-    this.setRowsBasedOnScreenHeight();
-  }
+---
 
-  setRowsBasedOnScreenHeight() {
-    const height = window.innerHeight;
+## ✅ Updated Final Code (No Env Variables)
 
-    if (height > 800 && height < 1000) {
-      this.rows = 10;
-    } else if (height >= 1000) {
-      this.rows = 15;
-    } else {
-      this.rows = 5;
+### `S3Config.java`
+
+```java
+@Configuration
+public class S3Config {
+
+    @Value("${s3.accessKey}")
+    private String accessKey;
+
+    @Value("${s3.secretKey}")
+    private String secretKey;
+
+    @Value("${s3.endpoint}")
+    private String endpoint;
+
+    @Value("${s3.region}")
+    private String region;
+
+    @Bean
+    public S3Client s3Client() {
+        AwsBasicCredentials awsCreds = AwsBasicCredentials.create(accessKey, secretKey);
+        return S3Client.builder()
+                .credentialsProvider(StaticCredentialsProvider.create(awsCreds))
+                .endpointOverride(URI.create(endpoint))
+                .region(Region.of(region))
+                .build();
     }
-  }
+
+    @Bean
+    public S3Presigner s3Presigner() {
+        AwsBasicCredentials awsCreds = AwsBasicCredentials.create(accessKey, secretKey);
+        return S3Presigner.builder()
+                .credentialsProvider(StaticCredentialsProvider.create(awsCreds))
+                .endpointOverride(URI.create(endpoint))
+                .region(Region.of(region))
+                .build();
+    }
 }
+```
 
+---
 
-⸻
+### `S3Service.java`
 
-Step 2: Update the Template (HTML)
+```java
+@Service
+public class S3Service {
 
-<p-table
-  [value]="customers"
-  [paginator]="true"
-  [rows]="rows"
-  [responsiveLayout]="'scroll'">
-  <!-- your columns here -->
-</p-table>
+    @Value("${s3.bucket}")
+    private String bucket;
 
+    private final S3Client s3Client;
+    private final S3Presigner s3Presigner;
 
-⸻
+    public S3Service(S3Client s3Client, S3Presigner s3Presigner) {
+        this.s3Client = s3Client;
+        this.s3Presigner = s3Presigner;
+    }
 
-Optional Tips:
-	•	If your component is standalone in Angular 17+, make sure you import TableModule from primeng/table.
-	•	You can fine-tune the screen height conditions (>800, <1000) to your UI layout.
-	•	HostListener listens to window resize and recalculates row count on-the-fly.
+    public String uploadFile(MultipartFile file) {
+        String key = "uploads/" + file.getOriginalFilename();
 
-Would you like to add responsiveness for mobile views as well?
+        try {
+            PutObjectRequest putRequest = PutObjectRequest.builder()
+                    .bucket(bucket)
+                    .key(key)
+                    .metadata(Map.of("x-amz-storage-class", "BASIC")) // for ECS Gen 2
+                    .contentType(file.getContentType())
+                    .build();
+
+            s3Client.putObject(putRequest, RequestBody.fromBytes(file.getBytes()));
+            return key;
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to upload file", e);
+        }
+    }
+
+    public String generatePresignedUrl(String key) {
+        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                .bucket(bucket)
+                .key(key)
+                .build();
+
+        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+                .signatureDuration(Duration.ofDays(2))
+                .getObjectRequest(getObjectRequest)
+                .build();
+
+        return s3Presigner.presignGetObject(presignRequest).url().toString();
+    }
+}
+```
+
+---
+
+### `application.properties`
+
+```properties
+s3.bucket=YOUR_BUCKET_NAME
+s3.accessKey=YOUR_ACCESS_KEY
+s3.secretKey=YOUR_SECRET_KEY
+s3.endpoint=https://s3browser.group.echonet
+s3.region=emea
+```
+
+---
+
+## ✅ Summary
+
+* ❌ You do **not** need `System.getenv(...)`
+* ✅ Use `@Value(...)` to inject your access key/secret directly from `application.properties`
+* ✅ For ECS Gen2, use `"x-amz-storage-class": "BASIC"` as metadata (optional; depends on ECS config)
+* ✅ Pre-signed URL will be valid for 2 days
+
+Would you like me to zip up and give you this full working Spring Boot project?
