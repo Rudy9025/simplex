@@ -1,3 +1,160 @@
+The error “Error creating bean with name S3UploadController” usually indicates a problem with dependency injection in Spring Boot. This could happen due to:
+	1.	Missing or Incorrect Configuration for the S3Client Bean.
+	2.	Incorrect package structure or missing @ComponentScan annotation.
+	3.	Misconfigured properties.
+
+Let’s debug and fix the issue step-by-step.
+
+⸻
+
+1. Verify S3Client Bean Configuration
+
+Ensure the S3Config class is properly creating the S3Client bean. Here is the corrected configuration:
+
+package com.example.s3upload;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+
+@Configuration
+public class S3Config {
+
+    @Bean
+    public S3Client s3Client() {
+        AwsBasicCredentials credentials = AwsBasicCredentials.create(
+            "YOUR_ACCESS_KEY_ID",  // Replace with your access key
+            "YOUR_SECRET_ACCESS_KEY" // Replace with your secret key
+        );
+
+        return S3Client.builder()
+                .region(Region.of("eu-west-1")) // Replace with your region (e.g., eu-west-1)
+                .credentialsProvider(StaticCredentialsProvider.create(credentials))
+                .build();
+    }
+}
+
+
+⸻
+
+2. Ensure Dependency Injection in the Controller
+
+The S3UploadController should have a proper constructor to inject the S3Client bean. Here’s the corrected code:
+
+package com.example.s3upload;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+@RestController
+@RequestMapping("/upload")
+public class S3UploadController {
+
+    private final S3Client s3Client;
+
+    public S3UploadController(S3Client s3Client) {
+        this.s3Client = s3Client; // Injected S3Client
+    }
+
+    @PostMapping
+    public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
+        try {
+            // Save the file to a temporary location
+            Path tempFile = Files.createTempFile(file.getOriginalFilename(), ".tmp");
+            file.transferTo(tempFile.toFile());
+
+            // Upload the file to the S3 bucket
+            s3Client.putObject(
+                    PutObjectRequest.builder()
+                            .bucket("fr_dev_s3_recon_nexgen") // Replace with your bucket name
+                            .key(file.getOriginalFilename())
+                            .build(),
+                    tempFile
+            );
+
+            // Clean up temporary file
+            Files.delete(tempFile);
+
+            return ResponseEntity.ok("File uploaded successfully!");
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("Failed to upload file: " + e.getMessage());
+        }
+    }
+}
+
+
+⸻
+
+3. Verify the application.properties Configuration
+
+Ensure all required AWS configuration is correct and accessible. For example:
+
+aws.access-key=YOUR_ACCESS_KEY_ID
+aws.secret-key=YOUR_SECRET_ACCESS_KEY
+aws.bucket-name=fr_dev_s3_recon_nexgen
+aws.region=eu-west-1
+
+If using System.getProperty(), ensure the properties are passed correctly when running the application. For instance:
+
+java -Daws.access-key=YOUR_ACCESS_KEY_ID \
+     -Daws.secret-key=YOUR_SECRET_ACCESS_KEY \
+     -Daws.region=eu-west-1 \
+     -Daws.bucket-name=fr_dev_s3_recon_nexgen \
+     -jar target/s3-upload.jar
+
+
+⸻
+
+4. Ensure Proper Package Structure
+
+Spring Boot automatically scans beans and components within the main application package and its sub-packages. Ensure your project structure looks like this:
+
+com.example.s3upload
+├── S3Config.java
+├── S3UploadController.java
+└── S3UploadApplication.java
+
+If your controller or configuration classes are outside the base package, you may need to add the @ComponentScan annotation in your S3UploadApplication class.
+
+⸻
+
+5. Add Logging for Debugging
+
+Add logging in the S3Config class to ensure the S3Client bean is created correctly:
+
+@Bean
+public S3Client s3Client() {
+    AwsBasicCredentials credentials = AwsBasicCredentials.create("YOUR_ACCESS_KEY_ID", "YOUR_SECRET_ACCESS_KEY");
+    System.out.println("Creating S3Client with provided credentials...");
+    return S3Client.builder()
+            .region(Region.of("eu-west-1"))
+            .credentialsProvider(StaticCredentialsProvider.create(credentials))
+            .build();
+}
+
+
+⸻
+
+6. Restart and Test
+	1.	Restart the Spring Boot application.
+	2.	Test the /upload endpoint via Postman or Angular frontend.
+
+If the issue persists, share the full stack trace of the error so I can assist further!
+
+
+
+
+
+
 Here’s the complete Spring Boot and Angular code for a file upload project. This project includes both the backend (Spring Boot) and frontend (Angular).
 
 ⸻
