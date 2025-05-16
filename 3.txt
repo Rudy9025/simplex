@@ -1,144 +1,279 @@
-Thanks for the image. Since you’ve got the MongoDB connection details and password, I’ll show you how to write a complete Spring Boot application that connects to your MongoDB (visible in Compass) and performs a simple operation (e.g., insert or query a document).
+Here’s the complete Spring Boot and Angular code for a file upload project. This project includes both the backend (Spring Boot) and frontend (Angular).
 
 ⸻
 
-✅ 1. Add Dependencies to pom.xml
+Backend: Spring Boot
+
+1. Project Structure
+
+src/
+├── main/
+│   ├── java/com/example/s3upload/
+│   │   ├── S3UploadApplication.java
+│   │   ├── S3Config.java
+│   │   ├── S3UploadController.java
+│   └── resources/
+│       ├── application.properties
+
+2. Code Implementation
+
+(a) pom.xml
+
+Add required dependencies for Spring Boot and AWS S3 SDK:
 
 <dependencies>
-    <!-- Spring Web -->
+    <!-- Spring Boot Web -->
     <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-web</artifactId>
     </dependency>
-
-    <!-- Spring Data MongoDB -->
+    
+    <!-- AWS SDK for S3 -->
     <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-data-mongodb</artifactId>
+        <groupId>software.amazon.awssdk</groupId>
+        <artifactId>s3</artifactId>
+        <version>2.20.0</version>
+    </dependency>
+    
+    <!-- Lombok (optional) -->
+    <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <optional>true</optional>
     </dependency>
 </dependencies>
 
 
 ⸻
 
-✅ 2. application.properties – MongoDB Configuration
+(b) application.properties
 
-Replace the placeholders with your actual credentials:
+Add the necessary configurations:
 
-spring.data.mongodb.uri=mongodb://admin:<PASSWORD>@eurvli125734.xmp.net.intra:20100/?authSource=admin
-spring.data.mongodb.database=your-database-name
-
-🔒 Replace <PASSWORD> with the actual password shown in your password vault (not ******), and your-database-name with your actual database name if known.
-
-⸻
-
-✅ 3. Create a Sample Entity
-
-package com.example.demo.model;
-
-import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.mapping.Document;
-
-@Document(collection = "users")
-public class User {
-    @Id
-    private String id;
-    private String name;
-    private String email;
-
-    // Constructors
-    public User() {}
-    public User(String name, String email) {
-        this.name = name;
-        this.email = email;
-    }
-
-    // Getters and Setters
-    public String getId() { return id; }
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public String getEmail() { return email; }
-    public void setEmail(String email) { this.email = email; }
-}
+aws.access-key=YOUR_ACCESS_KEY_ID
+aws.secret-key=YOUR_SECRET_ACCESS_KEY
+aws.bucket-name=fr_dev_s3_recon_nexgen
+aws.region=eu-west-1
+server.port=8080
 
 
 ⸻
 
-✅ 4. Create Repository
+(c) Main Class: S3UploadApplication.java
 
-package com.example.demo.repository;
-
-import com.example.demo.model.User;
-import org.springframework.data.mongodb.repository.MongoRepository;
-
-public interface UserRepository extends MongoRepository<User, String> {
-}
-
-
-⸻
-
-✅ 5. Create Controller to Test Connection
-
-package com.example.demo.controller;
-
-import com.example.demo.model.User;
-import com.example.demo.repository.UserRepository;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
-
-@RestController
-@RequestMapping("/api/users")
-public class UserController {
-
-    @Autowired
-    private UserRepository userRepository;
-
-    @PostMapping
-    public User createUser(@RequestBody User user) {
-        return userRepository.save(user);
-    }
-
-    @GetMapping
-    public List<User> getAllUsers() {
-        return userRepository.findAll();
-    }
-}
-
-
-⸻
-
-✅ 6. Main Class
-
-package com.example.demo;
+package com.example.s3upload;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class MongoDemoApplication {
+public class S3UploadApplication {
     public static void main(String[] args) {
-        SpringApplication.run(MongoDemoApplication.class, args);
+        SpringApplication.run(S3UploadApplication.class, args);
     }
 }
 
 
 ⸻
 
-✅ Test the API
-	1.	Run the application.
-	2.	Use Postman or CURL:
-	•	POST http://localhost:8080/api/users with body:
+(d) S3 Configuration: S3Config.java
 
-{
-  "name": "John",
-  "email": "john@example.com"
+package com.example.s3upload;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+
+@Configuration
+public class S3Config {
+
+    @Bean
+    public S3Client s3Client() {
+        AwsBasicCredentials awsCredentials = AwsBasicCredentials.create(
+            System.getProperty("aws.access-key"), 
+            System.getProperty("aws.secret-key")
+        );
+
+        return S3Client.builder()
+                .region(Region.of(System.getProperty("aws.region")))
+                .credentialsProvider(StaticCredentialsProvider.create(awsCredentials))
+                .build();
+    }
 }
 
 
-	•	GET http://localhost:8080/api/users to see the saved users.
+⸻
+
+(e) Controller: S3UploadController.java
+
+package com.example.s3upload;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+@RestController
+@RequestMapping("/upload")
+public class S3UploadController {
+
+    private final S3Client s3Client;
+    private static final String BUCKET_NAME = System.getProperty("aws.bucket-name");
+
+    public S3UploadController(S3Client s3Client) {
+        this.s3Client = s3Client;
+    }
+
+    @PostMapping
+    public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
+        try {
+            Path tempFile = Files.createTempFile(file.getOriginalFilename(), ".tmp");
+            file.transferTo(tempFile.toFile());
+
+            s3Client.putObject(
+                PutObjectRequest.builder()
+                        .bucket(BUCKET_NAME)
+                        .key(file.getOriginalFilename())
+                        .build(),
+                tempFile
+            );
+
+            Files.delete(tempFile);
+
+            return ResponseEntity.ok("File uploaded successfully!");
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("Failed to upload file: " + e.getMessage());
+        }
+    }
+}
+
 
 ⸻
 
-Would you like me to generate this project structure as a downloadable zip too?
+Frontend: Angular
+
+1. Generate Angular Project
+
+ng new file-upload-app
+cd file-upload-app
+
+
+⸻
+
+2. Install Dependencies
+
+npm install --save @angular/common @angular/forms @angular/http
+
+
+⸻
+
+3. Create File Upload Component
+
+ng generate component file-upload
+
+
+⸻
+
+4. Update file-upload.component.html
+
+<div class="container">
+  <h2>Upload File</h2>
+  <form (submit)="uploadFile($event)">
+    <input type="file" (change)="onFileSelected($event)" accept=".xlsx, .xls" />
+    <button type="submit" [disabled]="!selectedFile">Upload</button>
+  </form>
+  <p *ngIf="uploadResponse">{{ uploadResponse }}</p>
+</div>
+
+
+⸻
+
+5. Update file-upload.component.ts
+
+import { Component } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+
+@Component({
+  selector: 'app-file-upload',
+  templateUrl: './file-upload.component.html',
+  styleUrls: ['./file-upload.component.css']
+})
+export class FileUploadComponent {
+  selectedFile: File | null = null;
+  uploadResponse: string | null = null;
+
+  constructor(private http: HttpClient) {}
+
+  onFileSelected(event: any): void {
+    this.selectedFile = event.target.files[0];
+  }
+
+  uploadFile(event: Event): void {
+    event.preventDefault();
+    if (!this.selectedFile) return;
+
+    const formData = new FormData();
+    formData.append('file', this.selectedFile, this.selectedFile.name);
+
+    this.http.post('http://localhost:8080/upload', formData, { responseType: 'text' })
+      .subscribe({
+        next: (response) => this.uploadResponse = response,
+        error: (error) => this.uploadResponse = `Error: ${error.message}`
+      });
+  }
+}
+
+
+⸻
+
+6. Add Proxy Configuration (Optional)
+
+If backend runs on localhost:8080, add proxy.conf.json:
+
+{
+  "/upload": {
+    "target": "http://localhost:8080",
+    "secure": false
+  }
+}
+
+Update angular.json:
+
+"serve": {
+  "options": {
+    "proxyConfig": "proxy.conf.json"
+  }
+}
+
+
+⸻
+
+7. Add Component to App
+
+In app.component.html:
+
+<app-file-upload></app-file-upload>
+
+
+⸻
+
+8. Start the Applications
+	•	Start Spring Boot backend:
+
+./mvnw spring-boot:run
+
+
+	•	Start Angular frontend:
+
+ng serve
+
+
+
+Open http://localhost:4200, upload an Excel file, and verify it’s uploaded to your S3 bucket.
