@@ -1,134 +1,180 @@
-Perfect — the option you've selected:
+Great! Since the PKIX certificate error is resolved, let's build a clean **Spring Boot application** that:
 
-> ✅ **Base64-encoded ASCII, single certificate (`*.pem`, `*.crt`)**
+### ✅ Requirements:
 
-...is **exactly the correct format** for importing into Java using `keytool`. No need for OpenSSL.
+* Uploads **Excel files**
+* Sends to an **S3-compatible endpoint** (like `https://s3browser.echonet`)
+* Uses **AWS SDK v2**
+* Has a static **HTML form** frontend under `/resources/static`
 
 ---
 
-## ✅ What to Do Next (Based on That Certificate)
+## 🔧 1. `pom.xml` Dependencies
 
-Let’s assume you saved it as:
+Make sure you include these:
 
+```xml
+<dependencies>
+    <!-- Spring Web -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+
+    <!-- AWS SDK for S3 -->
+    <dependency>
+        <groupId>software.amazon.awssdk</groupId>
+        <artifactId>s3</artifactId>
+        <version>2.25.17</version>
+    </dependency>
+
+    <!-- Apache HTTP Client for AWS SDK -->
+    <dependency>
+        <groupId>software.amazon.awssdk</groupId>
+        <artifactId>apache-client</artifactId>
+        <version>2.25.17</version>
+    </dependency>
+</dependencies>
 ```
-production-team.crt
+
+---
+
+## 🧠 2. `application.properties`
+
+```properties
+aws.s3.bucket=your-bucket-name
+aws.s3.access-key=your-access-key
+aws.s3.secret-key=your-secret-key
+aws.s3.region=eu-west-3
+aws.s3.endpoint=https://s3browser.echonet
 ```
 
 ---
 
-## 🔧 Now Run This Command (Windows)
+## 🧠 3. `S3Config.java`
 
-Replace `<YOUR_JDK_PATH>` with your actual JDK folder (e.g., `C:\Program Files\Java\jdk-17`):
+```java
+@Configuration
+public class S3Config {
 
-```cmd
-"<YOUR_JDK_PATH>\bin\keytool.exe" -importcert -trustcacerts -file production-team.crt -alias intranet-cert -keystore "<YOUR_JDK_PATH>\lib\security\cacerts" -storepass changeit
+    @Value("${aws.s3.access-key}")
+    private String accessKey;
+
+    @Value("${aws.s3.secret-key}")
+    private String secretKey;
+
+    @Value("${aws.s3.region}")
+    private String region;
+
+    @Value("${aws.s3.endpoint}")
+    private String endpoint;
+
+    @Bean
+    public S3Client s3Client() {
+        AwsBasicCredentials credentials = AwsBasicCredentials.create(accessKey, secretKey);
+
+        return S3Client.builder()
+                .credentialsProvider(StaticCredentialsProvider.create(credentials))
+                .region(Region.of(region))
+                .endpointOverride(URI.create(endpoint))
+                .httpClientBuilder(ApacheHttpClient.builder())
+                .build();
+    }
+}
 ```
 
-### Example:
+---
 
-```cmd
-"C:\Program Files\Java\jdk-17\bin\keytool.exe" -importcert -trustcacerts -file C:\Users\you\Downloads\production-team.crt -alias intranet-cert -keystore "C:\Program Files\Java\jdk-17\lib\security\cacerts" -storepass changeit
+## 🧠 4. `S3Service.java`
+
+```java
+@Service
+public class S3Service {
+
+    @Value("${aws.s3.bucket}")
+    private String bucket;
+
+    private final S3Client s3Client;
+
+    public S3Service(S3Client s3Client) {
+        this.s3Client = s3Client;
+    }
+
+    public void uploadFile(String fileName, InputStream inputStream, long contentLength) {
+        PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+                .bucket(bucket)
+                .key(fileName)
+                .acl("public-read")
+                .build();
+
+        s3Client.putObject(putObjectRequest,
+                RequestBody.fromInputStream(inputStream, contentLength));
+    }
+}
 ```
 
 ---
 
-### 📝 Notes:
+## 🧠 5. `UploadController.java`
 
-* `-alias intranet-cert`: Just a name, can be anything.
-* `-storepass changeit`: This is the **default Java truststore password** (unless changed).
-* You’ll be prompted with:
+```java
+@RestController
+public class UploadController {
 
-  ```
-  Trust this certificate? [no]:
-  ```
+    private final S3Service s3Service;
 
-  Type `yes` and press Enter.
+    public UploadController(S3Service s3Service) {
+        this.s3Service = s3Service;
+    }
 
----
-
-## 🔄 Restart Spring Boot App
-
-After importing the certificate, **restart** your app — the PKIX error should be gone.
-
----
-
-## ⛔ No Admin Access? Use a Custom Truststore
-
-Let me know if you **cannot write to the JDK truststore** — I’ll walk you through using a **local `.jks` truststore** just for your app.
-
-Would you like that instead?
-
-
-
-
-
-
-
-
-
-
-
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
-import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.http.apache.ApacheHttpClient;
-import software.amazon.awssdk.http.apache.ProxyConfiguration;
-import software.amazon.awssdk.http.apache.internal.conn.SdkTlsSocketFactory;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-
-import javax.net.ssl.*;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.URI;
-import java.security.SecureRandom;
-import java.security.cert.X509Certificate;
-
-public class S3Util {
-
-    private static final String BUCKET = "FR_DEV_S3_recon_nexgen";
-    private static final String ENDPOINT = "https://s3browser.group.echonet";
-    private static final String ACCESS_KEY_ID = "c59778-fr";
-    private static final String SECRET_ACCESS_KEY = "your_secret_access_key";
-    private static final String REGION = "eu-west-3";
-
-    public static void uploadFile(String fileName, InputStream inputStream) throws IOException {
-
-        // 🔒 Disable SSL certificate validation (DEV ONLY)
-        TrustManager[] trustAllCerts = new TrustManager[]{
-            new X509TrustManager() {
-                public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
-                public void checkClientTrusted(X509Certificate[] certs, String authType) {}
-                public void checkServerTrusted(X509Certificate[] certs, String authType) {}
-            }
-        };
-
-        try {
-            SSLContext sslContext = SSLContext.getInstance("TLS");
-            sslContext.init(null, trustAllCerts, new SecureRandom());
-
-            ApacheHttpClient.Builder httpClientBuilder = ApacheHttpClient.builder()
-                    .sslSocketFactory(sslContext.getSocketFactory());
-
-            S3Client client = S3Client.builder()
-                    .credentialsProvider(StaticCredentialsProvider.create(
-                            AwsBasicCredentials.create(ACCESS_KEY_ID, SECRET_ACCESS_KEY)))
-                    .region(Region.of(REGION))
-                    .endpointOverride(URI.create(ENDPOINT))
-                    .httpClientBuilder(httpClientBuilder)
-                    .build();
-
-            PutObjectRequest request = PutObjectRequest.builder()
-                    .bucket(BUCKET)
-                    .key(fileName)
-                    .acl("public-read")
-                    .build();
-
-            client.putObject(request, RequestBody.fromInputStream(inputStream, inputStream.available()));
-
-        } catch (Exception e) {
-            e.printStackTrace();
+    @PostMapping("/upload")
+    public ResponseEntity<String> handleFileUpload(@RequestParam("file") MultipartFile file) {
+        try (InputStream is = file.getInputStream()) {
+            s3Service.uploadFile(file.getOriginalFilename(), is, file.getSize());
+            return ResponseEntity.ok("File uploaded successfully!");
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Upload failed: " + e.getMessage());
         }
     }
 }
+```
+
+---
+
+## 🧠 6. Static HTML Form in `src/main/resources/static/index.html`
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Excel File Upload</title>
+</head>
+<body>
+    <h1>Upload Excel File</h1>
+    <form action="/upload" method="post" enctype="multipart/form-data">
+        <input type="file" name="file" accept=".xls,.xlsx" required />
+        <button type="submit">Upload</button>
+    </form>
+</body>
+</html>
+```
+
+---
+
+## ▶️ Run Your App
+
+1. Start the Spring Boot app.
+2. Go to `http://localhost:8080/index.html`
+3. Upload an `.xls` or `.xlsx` file.
+4. It should upload to the configured S3 bucket at your custom endpoint.
+
+---
+
+Let me know if:
+
+* You need to restrict only Excel MIME types.
+* You want the file URL returned after upload.
+* You’re using Gradle instead of Maven.
+
+I can provide enhancements or a zipped project if needed.
