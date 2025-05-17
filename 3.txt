@@ -1,3 +1,73 @@
+Perfect — the option you've selected:
+
+> ✅ **Base64-encoded ASCII, single certificate (`*.pem`, `*.crt`)**
+
+...is **exactly the correct format** for importing into Java using `keytool`. No need for OpenSSL.
+
+---
+
+## ✅ What to Do Next (Based on That Certificate)
+
+Let’s assume you saved it as:
+
+```
+production-team.crt
+```
+
+---
+
+## 🔧 Now Run This Command (Windows)
+
+Replace `<YOUR_JDK_PATH>` with your actual JDK folder (e.g., `C:\Program Files\Java\jdk-17`):
+
+```cmd
+"<YOUR_JDK_PATH>\bin\keytool.exe" -importcert -trustcacerts -file production-team.crt -alias intranet-cert -keystore "<YOUR_JDK_PATH>\lib\security\cacerts" -storepass changeit
+```
+
+### Example:
+
+```cmd
+"C:\Program Files\Java\jdk-17\bin\keytool.exe" -importcert -trustcacerts -file C:\Users\you\Downloads\production-team.crt -alias intranet-cert -keystore "C:\Program Files\Java\jdk-17\lib\security\cacerts" -storepass changeit
+```
+
+---
+
+### 📝 Notes:
+
+* `-alias intranet-cert`: Just a name, can be anything.
+* `-storepass changeit`: This is the **default Java truststore password** (unless changed).
+* You’ll be prompted with:
+
+  ```
+  Trust this certificate? [no]:
+  ```
+
+  Type `yes` and press Enter.
+
+---
+
+## 🔄 Restart Spring Boot App
+
+After importing the certificate, **restart** your app — the PKIX error should be gone.
+
+---
+
+## ⛔ No Admin Access? Use a Custom Truststore
+
+Let me know if you **cannot write to the JDK truststore** — I’ll walk you through using a **local `.jks` truststore** just for your app.
+
+Would you like that instead?
+
+
+
+
+
+
+
+
+
+
+
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.sync.RequestBody;
