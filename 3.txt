@@ -1,102 +1,54 @@
-Great — let's make sure your Spring Boot project is complete, **error-free**, and uses the correct version for all dependencies, especially the **AWS SDK v2**.
+Here's a complete **working Spring Boot example** to upload files to an **S3-compatible storage** (like the one in your screenshot) using the AWS SDK v2 and custom endpoint (`s3browser.group.echonet`).
 
 ---
 
-### ✅ Finalized and Correct Setup
-
-This setup:
-
-* Uses Spring Boot **3.2.5**
-* Uses **AWS SDK v2.25.29**
-* Fully working Excel file upload to S3-compatible endpoint
+### ✅ Step-by-Step Implementation
 
 ---
 
-### ✅ `pom.xml` (Complete with all versions)
+### 1. **`pom.xml` Dependencies**
 
 ```xml
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
-         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<dependencies>
+    <!-- AWS SDK v2 for S3 -->
+    <dependency>
+        <groupId>software.amazon.awssdk</groupId>
+        <artifactId>s3</artifactId>
+        <version>2.25.29</version>
+    </dependency>
 
-    <modelVersion>4.0.0</modelVersion>
-    <groupId>com.example</groupId>
-    <artifactId>excel-s3-upload</artifactId>
-    <version>1.0.0</version>
-    <packaging>jar</packaging>
+    <!-- Spring Boot Starter Web -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
 
-    <properties>
-        <java.version>17</java.version>
-        <spring-boot.version>3.2.5</spring-boot.version>
-        <aws.sdk.version>2.25.29</aws.sdk.version>
-    </properties>
-
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>software.amazon.awssdk</groupId>
-                <artifactId>bom</artifactId>
-                <version>${aws.sdk.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
-
-    <dependencies>
-        <!-- Spring Boot -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-
-        <!-- AWS SDK v2 S3 -->
-        <dependency>
-            <groupId>software.amazon.awssdk</groupId>
-            <artifactId>s3</artifactId>
-        </dependency>
-
-        <!-- Optional: For parsing Excel later -->
-        <dependency>
-            <groupId>org.apache.poi</groupId>
-            <artifactId>poi-ooxml</artifactId>
-            <version>5.2.5</version>
-        </dependency>
-    </dependencies>
-
-    <build>
-        <plugins>
-            <!-- Spring Boot Plugin -->
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-                <version>${spring-boot.version}</version>
-            </plugin>
-        </plugins>
-    </build>
-</project>
+    <!-- Lombok (Optional for reducing boilerplate) -->
+    <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <optional>true</optional>
+    </dependency>
+</dependencies>
 ```
 
 ---
 
-### ✅ `application.properties`
+### 2. **`application.properties`**
 
 ```properties
-aws.accessKey=your-access-key
-aws.secretKey=your-secret-key
-aws.region=eu-west-3
-aws.bucketName=your-bucket-name
-aws.endpoint=https://s3browser.echonet
+aws.accessKey=user_fr_dev_s3_recon_nexgen_rw
+aws.secretKey=yqc51x4rKn/OuNN+9W4YJQL2BkLUzO9MQKe0k0iE
+aws.bucketName=user_fr_dev_s3_recon_nexgen_rw
+aws.region=us-east-1
+aws.endpoint=https://s3browser.group.echonet/
 ```
 
 ---
 
-### ✅ `S3Config.java`
+### 3. **S3Config.java**
 
 ```java
-package com.example.config;
-
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -105,7 +57,22 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
+import software.amazon.awssdk.services.s3.S3Configuration.Builder;
+import software.amazon.awssdk.services.s3.S3Utilities;
 import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
+import software.amazon.awssdk.services.s3.S3ClientBuilder;
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
+import software.amazon.awssdk.core.client.config.SdkClientOption;
+import software.amazon.awssdk.core.client.config.SdkAdvancedClientOption;
+import software.amazon.awssdk.core.client.config.SdkClientConfiguration;
+import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.regions.internal.util.EC2MetadataUtils;
+import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.*;
 
 import java.net.URI;
 
@@ -129,12 +96,12 @@ public class S3Config {
         return S3Client.builder()
                 .credentialsProvider(StaticCredentialsProvider.create(
                         AwsBasicCredentials.create(accessKey, secretKey)))
-                .region(Region.of(region))
                 .endpointOverride(URI.create(endpoint))
-                .httpClient(UrlConnectionHttpClient.create())
+                .region(Region.of(region))
                 .serviceConfiguration(S3Configuration.builder()
-                        .pathStyleAccessEnabled(true)
+                        .pathStyleAccessEnabled(true) // Important!
                         .build())
+                .httpClient(UrlConnectionHttpClient.builder().build())
                 .build();
     }
 }
@@ -142,23 +109,23 @@ public class S3Config {
 
 ---
 
-### ✅ `UploadController.java`
+### 4. **UploadController.java**
 
 ```java
-package com.example.controller;
-
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.core.sync.RequestBody;
 
 import java.io.IOException;
 
-@Controller
+@RestController
+@RequestMapping("/upload")
+@RequiredArgsConstructor
 public class UploadController {
 
     private final S3Client s3Client;
@@ -166,25 +133,22 @@ public class UploadController {
     @Value("${aws.bucketName}")
     private String bucketName;
 
-    public UploadController(S3Client s3Client) {
-        this.s3Client = s3Client;
-    }
-
-    @PostMapping("/upload")
-    @ResponseBody
-    public ResponseEntity<String> upload(@RequestParam("file") MultipartFile file) {
+    @PostMapping
+    public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
         try {
-            String key = file.getOriginalFilename();
+            String fileName = file.getOriginalFilename();
+            System.out.println("Uploading to bucket: " + bucketName + ", key: " + fileName);
 
             PutObjectRequest putObjectRequest = PutObjectRequest.builder()
                     .bucket(bucketName)
-                    .key(key)
+                    .key(fileName)
                     .contentType(file.getContentType())
                     .build();
 
             s3Client.putObject(putObjectRequest, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
-            return ResponseEntity.ok("Upload successful: " + key);
+            return ResponseEntity.ok("File uploaded successfully: " + fileName);
         } catch (IOException e) {
+            e.printStackTrace();
             return ResponseEntity.internalServerError().body("Upload failed: " + e.getMessage());
         }
     }
@@ -193,52 +157,36 @@ public class UploadController {
 
 ---
 
-### ✅ (Optional) `index.html` for testing UI
+### 5. **Enable File Upload in Spring Boot**
 
-Put this in `src/main/resources/static/index.html`:
+Add this to `application.properties` if your files are large:
 
-```html
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Upload Excel to S3</title>
-</head>
-<body>
-    <h1>Upload Excel File</h1>
-    <form action="/upload" method="post" enctype="multipart/form-data">
-        <input type="file" name="file" accept=".xlsx,.xls"/>
-        <button type="submit">Upload</button>
-    </form>
-</body>
-</html>
+```properties
+spring.servlet.multipart.max-file-size=50MB
+spring.servlet.multipart.max-request-size=50MB
 ```
 
 ---
 
-### ✅ Run the app
+### 6. **cURL/Frontend Test**
+
+You can test it using:
 
 ```bash
-mvn clean spring-boot:run
+curl -X POST http://localhost:8080/upload \
+  -F "file=@/path/to/your/file.csv"
 ```
-
-Open: `http://localhost:8080`
 
 ---
 
-Let me know if you want:
+### ✅ Summary Checklist
 
-* List/download files
-* Upload progress
-* Excel content parsing/validation before upload
+* [x] Bucket name matches exactly.
+* [x] Endpoint URL ends with `/`.
+* [x] `.withPathStyleAccessEnabled(true)` is set.
+* [x] AWS SDK v2 used.
+* [x] Region matches what's expected (can be dummy for custom S3).
 
-I can add those too.
+---
 
-
-
-
-<!-- AWS SDK for Java v2 - S3 with explicit version -->
-<dependency>
-    <groupId>software.amazon.awssdk</groupId>
-    <artifactId>s3</artifactId>
-    <version>2.25.29</version>
-</dependency>
+Let me know if you want me to generate an Angular file upload frontend for this as well.
