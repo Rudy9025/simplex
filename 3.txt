@@ -1,205 +1,136 @@
-Here's a **clean, modern Spring Boot 3.x setup** for uploading Excel files to a **custom S3-compatible endpoint**, **without using ApacheHttpClient** — using only the default Netty HTTP client from AWS SDK v2. This version avoids manual HTTP client configs, reducing complexity and errors.
+Based on your provided credentials and custom S3-compatible endpoint (`https://s3browser.group.echonet`), here’s a complete **Spring Boot application** setup to upload Excel files to your S3 bucket without using Apache HTTP client.
 
 ---
 
-## ✅ Project Overview
-
-* Spring Boot (3.x)
-* AWS SDK v2 (S3)
-* Static HTML file for upload
-* No Apache HTTP client (uses default Netty)
-
----
-
-## 🔧 `pom.xml`
-
-```xml
-<project>
-  <modelVersion>4.0.0</modelVersion>
-  <groupId>com.example</groupId>
-  <artifactId>s3-upload-netty</artifactId>
-  <version>1.0.0</version>
-  <properties>
-    <java.version>17</java.version>
-  </properties>
-
-  <dependencies>
-    <!-- Spring Boot Web -->
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-web</artifactId>
-    </dependency>
-
-    <!-- AWS SDK v2 for S3 -->
-    <dependency>
-      <groupId>software.amazon.awssdk</groupId>
-      <artifactId>s3</artifactId>
-      <version>2.25.17</version>
-    </dependency>
-
-    <!-- Multipart support -->
-    <dependency>
-      <groupId>commons-fileupload</groupId>
-      <artifactId>commons-fileupload</artifactId>
-      <version>1.5</version>
-    </dependency>
-  </dependencies>
-
-  <build>
-    <plugins>
-      <plugin>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-maven-plugin</artifactId>
-      </plugin>
-    </plugins>
-  </build>
-</project>
-```
-
----
-
-## 📄 `application.properties`
+## ✅ `application.properties`
 
 ```properties
-aws.s3.bucket=FR_DEV_S3_recon_nexgen
-aws.s3.access-key=c59778-fr
-aws.s3.secret-key=your_secret_access_key
-aws.s3.region=eu-west-3
+aws.s3.bucketName=FR_DEV_S3_recon_nexgen
+aws.s3.accessKey=user_fr_dev_s3_recon_nexgen_rw
+aws.s3.secretKey=YOUR_SECRET_KEY_HERE
 aws.s3.endpoint=https://s3browser.group.echonet
+aws.s3.region=eu-west-3
 ```
 
 ---
 
-## ⚙️ `S3Config.java`
+## ✅ `S3Config.java`
 
 ```java
-package com.example.s3upload.config;
-
+import io.awspring.cloud.s3.S3Template;
+import io.awspring.cloud.s3.S3TransferManager;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3AsyncClient;
+import software.amazon.awssdk.services.s3.S3Configuration;
+import software.amazon.awssdk.services.s3.S3Presigner;
 
 import java.net.URI;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Configuration
 public class S3Config {
 
-    @Value("${aws.s3.access-key}")
+    @Value("${aws.s3.accessKey}")
     private String accessKey;
 
-    @Value("${aws.s3.secret-key}")
+    @Value("${aws.s3.secretKey}")
     private String secretKey;
-
-    @Value("${aws.s3.region}")
-    private String region;
 
     @Value("${aws.s3.endpoint}")
     private String endpoint;
 
+    @Value("${aws.s3.region}")
+    private String region;
+
     @Bean
-    public S3Client s3Client() {
-        return S3Client.builder()
-                .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretKey)))
-                .region(Region.of(region))
+    public S3AsyncClient s3AsyncClient() {
+        return S3AsyncClient.builder()
                 .endpointOverride(URI.create(endpoint))
+                .region(Region.of(region))
+                .credentialsProvider(StaticCredentialsProvider.create(
+                        AwsBasicCredentials.create(accessKey, secretKey)))
+                .serviceConfiguration(S3Configuration.builder()
+                        .pathStyleAccessEnabled(true)
+                        .build())
                 .build();
+    }
+
+    @Bean
+    public S3TransferManager transferManager(S3AsyncClient s3AsyncClient) {
+        return S3TransferManager.builder()
+                .s3Client(s3AsyncClient)
+                .build();
+    }
+
+    @Bean
+    public S3Template s3Template(S3TransferManager transferManager) {
+        return new S3Template(transferManager);
     }
 }
 ```
 
 ---
 
-## 📦 `S3Service.java`
+## ✅ `ExcelUploadController.java`
 
 ```java
-package com.example.s3upload.service;
-
+import io.awspring.cloud.s3.S3Template;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-
-import java.io.InputStream;
-
-@Service
-public class S3Service {
-
-    private final S3Client s3Client;
-
-    @Value("${aws.s3.bucket}")
-    private String bucket;
-
-    public S3Service(S3Client s3Client) {
-        this.s3Client = s3Client;
-    }
-
-    public void uploadFile(String key, InputStream inputStream, long size) {
-        PutObjectRequest request = PutObjectRequest.builder()
-                .bucket(bucket)
-                .key(key)
-                .acl("public-read")
-                .build();
-
-        s3Client.putObject(request, RequestBody.fromInputStream(inputStream, size));
-    }
-}
-```
-
----
-
-## 🌐 `UploadController.java`
-
-```java
-package com.example.s3upload.controller;
-
-import com.example.s3upload.service.S3Service;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Controller;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 
-@Controller
-public class UploadController {
+@RestController
+@RequestMapping("/upload")
+public class ExcelUploadController {
 
-    @Autowired
-    private S3Service s3Service;
+    private final S3Template s3Template;
 
-    @GetMapping("/")
-    public String home() {
-        return "upload.html";
+    @Value("${aws.s3.bucketName}")
+    private String bucketName;
+
+    public ExcelUploadController(S3Template s3Template) {
+        this.s3Template = s3Template;
     }
 
-    @PostMapping("/upload")
-    @ResponseBody
-    public String upload(@RequestParam("file") MultipartFile file) throws IOException {
-        s3Service.uploadFile(file.getOriginalFilename(), file.getInputStream(), file.getSize());
-        return "✅ Upload successful!";
+    @PostMapping("/excel")
+    public ResponseEntity<String> uploadExcel(@RequestParam("file") MultipartFile file) {
+        try {
+            String key = file.getOriginalFilename();
+            s3Template.upload(bucketName, key, file.getInputStream());
+            return ResponseEntity.ok("File uploaded successfully: " + key);
+        } catch (IOException e) {
+            return ResponseEntity.status(500).body("Failed to upload file: " + e.getMessage());
+        }
     }
 }
 ```
 
 ---
 
-## 🧾 `upload.html` in `src/main/resources/static`
+## ✅ HTML Upload Page (optional)
+
+If you're serving a static frontend:
 
 ```html
+<!-- resources/static/upload.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Upload Excel to S3</title>
+    <title>Excel Uploader</title>
 </head>
 <body>
-    <h1>Upload Excel File</h1>
-    <form method="post" action="/upload" enctype="multipart/form-data">
-        <input type="file" name="file" accept=".xls,.xlsx" required />
+    <h2>Upload Excel File</h2>
+    <form action="/upload/excel" method="post" enctype="multipart/form-data">
+        <input type="file" name="file" accept=".xlsx,.xls" required />
         <button type="submit">Upload</button>
     </form>
 </body>
@@ -208,30 +139,36 @@ public class UploadController {
 
 ---
 
-## ✅ Directory Structure
+## ✅ Maven Dependencies
 
-```
-src/
-  main/
-    java/com/example/s3upload/
-      config/S3Config.java
-      controller/UploadController.java
-      service/S3Service.java
-    resources/
-      static/upload.html
-      application.properties
+In `pom.xml`:
+
+```xml
+<dependencies>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+
+    <dependency>
+        <groupId>io.awspring.cloud</groupId>
+        <artifactId>spring-cloud-aws-s3</artifactId>
+        <version>3.0.1</version>
+    </dependency>
+
+    <dependency>
+        <groupId>software.amazon.awssdk</groupId>
+        <artifactId>s3</artifactId>
+    </dependency>
+
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter</artifactId>
+    </dependency>
+</dependencies>
 ```
 
 ---
 
-## 🏁 Run the App
-
-```bash
-./mvnw spring-boot:run
-```
-
-Then open `http://localhost:8080` and upload an Excel file.
-
----
-
-Let me know if you'd like a ready-to-run zip or GitHub project.
+✅ This code is compatible with custom S3 endpoints (like `s3browser.group.echonet`) and handles **Excel file upload via REST or UI**.
+Let me know if you want to download or list files as well.
