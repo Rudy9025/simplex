@@ -1,197 +1,225 @@
-Sure! Below is the **full working example Java code** that uses AWS SDK v2 and **disables SSL verification** (for development use only). It creates an `S3Client` that ignores certificate errors, such as `PKIX path building failed`.
-
----
-
-### ✅ Full Example: Upload a File to S3 with SSL Verification Disabled
-
-#### 🔧 Assumptions:
-
-* You're using **AWS SDK v2**
-* Your file is a `MultipartFile` from a Spring Boot controller
-* Bucket name and region are known
-* This is for **development or internal use only**
-
----
-
-### 📦 1. Add Maven Dependency (if not already)
-
-Add this to your `pom.xml`:
-
-```xml
-<dependency>
-    <groupId>software.amazon.awssdk</groupId>
-    <artifactId>s3</artifactId>
-    <version>2.25.0</version> <!-- Or latest -->
-</dependency>
-```
-
----
-
-### 🧠 2. Create the S3 Client Factory
-
-```java
-import software.amazon.awssdk.http.SdkHttpClient;
-import software.amazon.awssdk.http.apache.ApacheHttpClient;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.s3.S3Client;
-
-import javax.net.ssl.*;
-import java.security.cert.X509Certificate;
-
-public class S3ClientFactory {
-
-    public static S3Client createUnsafeS3Client() throws Exception {
-        TrustManager[] trustAllCerts = new TrustManager[]{
-            new X509TrustManager() {
-                public void checkClientTrusted(X509Certificate[] certs, String authType) {}
-                public void checkServerTrusted(X509Certificate[] certs, String authType) {}
-                public X509Certificate[] getAcceptedIssuers() {
-                    return new X509Certificate[0];
-                }
-            }
-        };
-
-        SSLContext sslContext = SSLContext.getInstance("TLS");
-        sslContext.init(null, trustAllCerts, new java.security.SecureRandom());
-
-        HostnameVerifier allHostsValid = (hostname, session) -> true;
-
-        SdkHttpClient httpClient = ApacheHttpClient.builder()
-                .sslSocketFactory(sslContext.getSocketFactory())
-                .hostnameVerifier(allHostsValid)
-                .build();
-
-        return S3Client.builder()
-                .httpClient(httpClient)
-                .region(Region.AP_SOUTH_1) // Replace with your region
-                .build();
-    }
-}
-```
-
----
-
-### 🧾 3. Use It in a Spring Boot Service
-
-```java
-import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.core.sync.RequestBody;
-
-import java.io.IOException;
-
-@Service
-public class S3Service {
-
-    private final String bucketName = "your-bucket-name"; // Replace with your actual bucket
-
-    public String uploadFile(MultipartFile file) throws Exception {
-        S3Client s3Client = S3ClientFactory.createUnsafeS3Client();
-
-        String key = file.getOriginalFilename(); // or UUID.randomUUID() + extension
-
-        PutObjectRequest putObjectRequest = PutObjectRequest.builder()
-                .bucket(bucketName)
-                .key(key)
-                .build();
-
-        s3Client.putObject(putObjectRequest, RequestBody.fromBytes(file.getBytes()));
-
-        return "https://" + bucketName + ".s3.amazonaws.com/" + key;
-    }
-}
-```
-
----
-
-### ✅ 4. Controller Example (Optional)
-
-```java
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
-
-@RestController
-public class UploadController {
-
-    @Autowired
-    private S3Service s3Service;
-
-    @PostMapping("/upload")
-    public String upload(@RequestParam("file") MultipartFile file) throws Exception {
-        return s3Service.uploadFile(file);
-    }
-}
-```
-
----
-
-### ✅ Done!
-
-You should now be able to upload files even when your corporate proxy or cert chain is broken.
-
----
-
-Would you like a version that **uses a proper truststore instead of disabling cert validation**? That would be safer for production use.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-public class MainApplication {
-    public static void main(String[] args) {
-        // Disable AWS SDK SSL certificate validation (⚠️ for testing only)
-        System.setProperty("com.amazonaws.sdk.disableCertChecking", "true");
-
-        SpringApplication.run(MainApplication.class, args);
-    }
+Here is the complete code integrated into your Angular application:
+
+⸻
+
+1. auth.service.ts
+
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable, of } from 'rxjs';
+import { catchError, map } from 'rxjs/operators';
+
+@Injectable({
+  providedIn: 'root',
+})
+export class AuthService {
+  private apiUrl = 'http://localhost:1111/api/login';
+
+  constructor(private http: HttpClient) {}
+
+  login(uid: string, password: string): Observable<boolean> {
+    return this.http
+      .post<any>(this.apiUrl, { uid, password })
+      .pipe(
+        map((response) => {
+          if (response.status === 'success') {
+            sessionStorage.setItem('authToken', 'true'); // Save token in session storage
+            return true;
+          } else {
+            sessionStorage.removeItem('authToken'); // Remove token on failure
+            return false;
+          }
+        }),
+        catchError(() => {
+          sessionStorage.removeItem('authToken');
+          return of(false);
+        })
+      );
+  }
+
+  isAuthenticated(): boolean {
+    return sessionStorage.getItem('authToken') === 'true'; // Check session storage
+  }
+
+  logout(): void {
+    sessionStorage.clear(); // Clear all session storage
+    localStorage.clear(); // Clear all local storage
+  }
 }
 
 
+⸻
 
+2. auth.guard.ts
 
+import { Injectable } from '@angular/core';
+import {
+  CanActivate,
+  Router,
+  ActivatedRouteSnapshot,
+  RouterStateSnapshot,
+} from '@angular/router';
+import { AuthService } from './auth.service';
 
+@Injectable({
+  providedIn: 'root',
+})
+export class AuthGuard implements CanActivate {
+  constructor(private authService: AuthService, private router: Router) {}
 
-@PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-public ResponseEntity<Map<String, String>> upload(@RequestPart("file") MultipartFile file) {
-    try {
-        System.out.println("Received file: " + file.getOriginalFilename());
-
-        String key = s3Service.uploadFile(file); // 🔥 likely failing here
-        String url = s3Service.generatePresignedUrl(key);
-
-        Map<String, String> response = new HashMap<>();
-        response.put("message", "Upload successful");
-        response.put("url", url);
-        return ResponseEntity.ok(response);
-    } catch (Exception e) {
-        // Print full stack trace for debugging
-        e.printStackTrace();
-
-        // Return the error to frontend
-        Map<String, String> error = new HashMap<>();
-        error.put("error", "Upload failed: " + e.getMessage());
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+  canActivate(
+    route: ActivatedRouteSnapshot,
+    state: RouterStateSnapshot
+  ): boolean {
+    if (this.authService.isAuthenticated()) {
+      return true;
+    } else {
+      this.router.navigate(['/']);
+      return false;
     }
+  }
 }
+
+
+⸻
+
+3. login.component.ts
+
+import { Component } from '@angular/core';
+import { Router } from '@angular/router';
+import { AuthService } from './auth.service';
+
+@Component({
+  selector: 'app-login',
+  templateUrl: './login.component.html',
+})
+export class LoginComponent {
+  uid = '';
+  password = '';
+
+  constructor(private authService: AuthService, private router: Router) {}
+
+  onLogin(): void {
+    if (this.uid === '' || this.password === '') {
+      this.showError('Fields cannot be empty');
+    } else {
+      this.authService.login(this.uid, this.password).subscribe((isAuth) => {
+        if (isAuth) {
+          this.router.navigateByUrl('/home');
+        } else {
+          this.showError('Invalid Credentials');
+        }
+      });
+    }
+  }
+
+  showError(message: string): void {
+    console.error(message); // Replace with actual UI error handling
+  }
+}
+
+
+⸻
+
+4. login.component.html
+
+<div class="switch">
+  <div *ngIf="isLogin" class="Login">
+    <div class="title">Login</div>
+    <div class="wrapper">
+      <input
+        type="text"
+        placeholder="UID"
+        class="betterOutline"
+        [(ngModel)]="uid"
+      />
+      <input
+        type="password"
+        placeholder="Password"
+        class="betterOutline"
+        [(ngModel)]="password"
+      />
+    </div>
+    <div class="item">
+      <button (click)="onLogin()">Submit</button>
+    </div>
+  </div>
+</div>
+
+
+⸻
+
+5. app.routes.ts
+
+import { Routes } from '@angular/router';
+import { LoginComponent } from '../components/login/login.component';
+import { HomeComponent } from '../components/home/home.component';
+import { MatchComponent } from '../components/match/match.component';
+import { ExclusionRuleComponent } from '../components/exclusion-rule/exclusion-rule.component';
+import { DragMatchComponent } from '../components/dragmatch/dragmatch.component';
+import { AuthGuard } from './auth.guard';
+
+export const routes: Routes = [
+  { path: '', component: LoginComponent },
+  {
+    path: '',
+    component: LayoutComponent,
+    children: [
+      { path: 'home', component: HomeComponent, canActivate: [AuthGuard] },
+      { path: 'match', component: MatchComponent, canActivate: [AuthGuard] },
+      {
+        path: 'exclude',
+        component: ExclusionRuleComponent,
+        canActivate: [AuthGuard],
+      },
+      {
+        path: 'dragmatch',
+        component: DragMatchComponent,
+        canActivate: [AuthGuard],
+      },
+    ],
+  },
+];
+
+
+⸻
+
+6. app.component.ts
+
+import { Component } from '@angular/core';
+import { Router } from '@angular/router';
+import { AuthService } from './auth.service';
+
+@Component({
+  selector: 'app-root',
+  templateUrl: './app.component.html',
+})
+export class AppComponent {
+  constructor(private authService: AuthService, private router: Router) {}
+
+  logout(): void {
+    this.authService.logout();
+    this.router.navigate(['/']); // Redirect to login page
+  }
+}
+
+
+⸻
+
+7. app.component.html
+
+<div>
+  <button (click)="logout()">Logout</button>
+</div>
+<router-outlet></router-outlet>
+
+
+⸻
+
+Summary
+	•	AuthService: Manages login, logout, and authentication checks.
+	•	AuthGuard: Protects routes by validating the authentication status.
+	•	SessionStorage: Used to persist authentication status during the browser session.
+	•	Logout: Clears all session and local storage.
+
+Let me know if you’d like further refinements or additional features!
