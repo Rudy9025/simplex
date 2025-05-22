@@ -129,4 +129,160 @@ Create an upload.html file with a form to upload the file and specify the table 
 	3.	Upload a CSV file and provide a table name.
 	4.	Verify the table and data in Oracle SQL Developer.
 
+
+
+Here is a complete, error-free implementation for your Spring Boot application to upload a CSV file and create an Oracle table, with proper handling for Oracle-specific SQL syntax.
+
+⸻
+
+Controller
+
+@RestController
+@RequestMapping("/api/upload")
+public class FileUploadController {
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<String> uploadFile(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("tableName") String tableName) {
+        try {
+            // Validate inputs
+            if (file.isEmpty() || tableName == null || tableName.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body("File or table name is missing.");
+            }
+            
+            tableName = sanitizeTableName(tableName); // Ensure table name is valid for Oracle
+
+            // Read file content
+            String fileContent = new String(file.getBytes());
+            String[] lines = fileContent.split("\n");
+
+            // Parse header and data rows
+            String[] headers = lines[0].split(",");
+            List<String> columnNames = Arrays.stream(headers)
+                    .map(col -> col.trim().replaceAll("\\s+", "_")) // Replace spaces with underscores
+                    .collect(Collectors.toList());
+
+            // Create table in Oracle
+            String createTableQuery = buildCreateTableQuery(tableName, columnNames);
+            jdbcTemplate.execute(createTableQuery);
+
+            // Insert data into table
+            for (int i = 1; i < lines.length; i++) { // Skip the header row
+                String[] rowValues = lines[i].split(",");
+                insertRowIntoTable(tableName, columnNames, rowValues);
+            }
+
+            return ResponseEntity.ok("File uploaded and table created successfully!");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("An error occurred: " + e.getMessage());
+        }
+    }
+
+    private String sanitizeTableName(String tableName) {
+        // Validate and sanitize the table name for Oracle
+        tableName = tableName.trim().toUpperCase().replaceAll("[^A-Z0-9_]", "_");
+        if (!tableName.matches("^[A-Z][A-Z0-9_]{0,29}$")) {
+            throw new IllegalArgumentException("Invalid table name.");
+        }
+        return tableName;
+    }
+
+    private String buildCreateTableQuery(String tableName, List<String> columns) {
+        String columnsDefinition = columns.stream()
+                .map(column -> column + " VARCHAR2(255)")
+                .collect(Collectors.joining(", "));
+        return "CREATE TABLE " + tableName + " (" + columnsDefinition + ")";
+    }
+
+    private void insertRowIntoTable(String tableName, List<String> columns, String[] rowValues) {
+        String columnNames = String.join(", ", columns);
+        String values = Arrays.stream(rowValues)
+                .map(value -> "'" + value.trim().replace("'", "''") + "'") // Escape single quotes
+                .collect(Collectors.joining(", "));
+        String insertQuery = "INSERT INTO " + tableName + " (" + columnNames + ") VALUES (" + values + ")";
+        jdbcTemplate.execute(insertQuery);
+    }
+}
+
+
+⸻
+
+Frontend (HTML)
+
+Save this as upload.html in src/main/resources/static.
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Upload</title>
+</head>
+<body>
+    <h1>Upload CSV File</h1>
+    <form action="/api/upload" method="post" enctype="multipart/form-data">
+        <label for="file">Choose CSV File:</label>
+        <input type="file" id="file" name="file" accept=".csv" required>
+        <br><br>
+        <label for="tableName">Table Name:</label>
+        <input type="text" id="tableName" name="tableName" required>
+        <br><br>
+        <button type="submit">Upload</button>
+    </form>
+</body>
+</html>
+
+
+⸻
+
+Application Configuration
+
+Dependencies (pom.xml)
+
+Ensure the following dependencies are present:
+
+<dependencies>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>com.oracle.database.jdbc</groupId>
+        <artifactId>ojdbc8</artifactId>
+        <scope>runtime</scope>
+    </dependency>
+</dependencies>
+
+Configuration (application.properties)
+
+Configure the Oracle database connection:
+
+spring.datasource.url=jdbc:oracle:thin:@<hostname>:<port>:<service_name>
+spring.datasource.username=<your_username>
+spring.datasource.password=<your_password>
+spring.datasource.driver-class-name=oracle.jdbc.OracleDriver
+
+
+⸻
+
+Testing
+	1.	Run the Spring Boot application.
+	2.	Open http://localhost:8080/upload.html in a browser.
+	3.	Select a CSV file and enter a valid table name.
+	4.	Click the upload button.
+	5.	Verify the table and data in Oracle SQL Developer.
+
+Let me know if any issues persist!
+
+
+
 Would you like additional details on a specific part of the implementation?
