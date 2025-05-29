@@ -1,288 +1,187 @@
-To implement the functionality you described, here’s the step-by-step approach:
-
-1. Backend Implementation (Spring Boot)
-	•	Create a Spring Boot application with a controller to handle file uploads.
-	•	Use the spring.datasource.* properties for Oracle database connection.
-	•	Process the file to replace spaces in column names with underscores.
-	•	Create a new table in Oracle based on the provided name and the processed file.
-
-Dependencies (Add to pom.xml)
-
-<dependencies>
-    <!-- Spring Web -->
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-web</artifactId>
-    </dependency>
-
-    <!-- Spring Data JPA -->
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-data-jpa</artifactId>
-    </dependency>
-
-    <!-- Oracle Database Driver -->
-    <dependency>
-        <groupId>com.oracle.database.jdbc</groupId>
-        <artifactId>ojdbc8</artifactId>
-        <scope>runtime</scope>
-    </dependency>
-</dependencies>
-
-Properties (in application.properties)
-
-spring.datasource.url=jdbc:oracle:thin:@<hostname>:<port>:<service_name>
-spring.datasource.username=<your_username>
-spring.datasource.password=<your_password>
-spring.datasource.driver-class-name=oracle.jdbc.OracleDriver
-
-Controller
-
-@RestController
-@RequestMapping("/api/upload")
-public class FileUploadController {
-
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
-
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<String> uploadFile(
-        @RequestParam("file") MultipartFile file,
-        @RequestParam("tableName") String tableName
-    ) throws IOException {
-
-        // Validate file and table name
-        if (file.isEmpty() || tableName.trim().isEmpty()) {
-            return ResponseEntity.badRequest().body("File or Table Name is missing.");
-        }
-
-        // Read file contents
-        String content = new String(file.getBytes());
-        String[] lines = content.split("\n");
-
-        // Process column names
-        String[] columns = lines[0].split(",");
-        List<String> processedColumns = Arrays.stream(columns)
-            .map(column -> column.trim().replaceAll("\\s+", "_"))
-            .collect(Collectors.toList());
-
-        // Create table in Oracle
-        String createTableQuery = buildCreateTableQuery(tableName, processedColumns);
-        jdbcTemplate.execute(createTableQuery);
-
-        // Insert data
-        String insertDataQuery = buildInsertDataQuery(tableName, processedColumns, lines);
-        jdbcTemplate.execute(insertDataQuery);
-
-        return ResponseEntity.ok("File uploaded and data inserted successfully!");
-    }
-
-    private String buildCreateTableQuery(String tableName, List<String> columns) {
-        String columnsDefinition = columns.stream()
-            .map(column -> column + " VARCHAR2(255)")
-            .collect(Collectors.joining(", "));
-        return "CREATE TABLE " + tableName + " (" + columnsDefinition + ")";
-    }
-
-    private String buildInsertDataQuery(String tableName, List<String> columns, String[] lines) {
-        String columnNames = String.join(", ", columns);
-        StringBuilder values = new StringBuilder();
-
-        for (int i = 1; i < lines.length; i++) {
-            String[] rowValues = lines[i].split(",");
-            String rowValueString = Arrays.stream(rowValues)
-                .map(value -> "'" + value.trim() + "'")
-                .collect(Collectors.joining(", "));
-            values.append("(").append(rowValueString).append("),");
-        }
-
-        values.deleteCharAt(values.length() - 1); // Remove last comma
-        return "INSERT INTO " + tableName + " (" + columnNames + ") VALUES " + values;
-    }
-}
-
-2. Frontend Implementation (upload.html)
-
-Create an upload.html file with a form to upload the file and specify the table name.
-
-<!DOCTYPE html>
-<html>
-<head>
-    <title>File Upload</title>
-</head>
-<body>
-    <form action="/api/upload" method="post" enctype="multipart/form-data">
-        <label for="file">Choose file:</label>
-        <input type="file" id="file" name="file" required>
-        <br><br>
-        <label for="tableName">Table Name:</label>
-        <input type="text" id="tableName" name="tableName" required>
-        <br><br>
-        <button type="submit">Upload</button>
-    </form>
-</body>
-</html>
-
-3. Run and Test
-	1.	Run your Spring Boot application.
-	2.	Access upload.html via a browser.
-	3.	Upload a CSV file and provide a table name.
-	4.	Verify the table and data in Oracle SQL Developer.
-
-
-
-Here is a complete, error-free implementation for your Spring Boot application to upload a CSV file and create an Oracle table, with proper handling for Oracle-specific SQL syntax.
+To implement a dynamic and reusable auditing system without duplicating methods in every component, you can use a more centralized approach. Here’s how you can achieve this:
 
 ⸻
 
-Controller
+Frontend (Dynamic Auditing)
 
-@RestController
-@RequestMapping("/api/upload")
-public class FileUploadController {
+1. Use Angular Router Events to Track Navigation
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+Listen to router events to capture which component the user navigates to dynamically.
 
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<String> uploadFile(
-            @RequestParam("file") MultipartFile file,
-            @RequestParam("tableName") String tableName) {
-        try {
-            // Validate inputs
-            if (file.isEmpty() || tableName == null || tableName.trim().isEmpty()) {
-                return ResponseEntity.badRequest().body("File or table name is missing.");
-            }
-            
-            tableName = sanitizeTableName(tableName); // Ensure table name is valid for Oracle
+2. Create a Global Event Emitter for User Actions
 
-            // Read file content
-            String fileContent = new String(file.getBytes());
-            String[] lines = fileContent.split("\n");
+Instead of adding methods like onEdit, onDelete in every component, centralize the auditing logic in a shared service and trigger it dynamically using Angular’s event emitter.
 
-            // Parse header and data rows
-            String[] headers = lines[0].split(",");
-            List<String> columnNames = Arrays.stream(headers)
-                    .map(col -> col.trim().replaceAll("\\s+", "_")) // Replace spaces with underscores
-                    .collect(Collectors.toList());
+⸻
 
-            // Create table in Oracle
-            String createTableQuery = buildCreateTableQuery(tableName, columnNames);
-            jdbcTemplate.execute(createTableQuery);
+Implementation
 
-            // Insert data into table
-            for (int i = 1; i < lines.length; i++) { // Skip the header row
-                String[] rowValues = lines[i].split(",");
-                insertRowIntoTable(tableName, columnNames, rowValues);
-            }
+1. Create a Central AuditService
 
-            return ResponseEntity.ok("File uploaded and table created successfully!");
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("An error occurred: " + e.getMessage());
-        }
-    }
+This service will capture both navigation and user actions dynamically.
 
-    private String sanitizeTableName(String tableName) {
-        // Validate and sanitize the table name for Oracle
-        tableName = tableName.trim().toUpperCase().replaceAll("[^A-Z0-9_]", "_");
-        if (!tableName.matches("^[A-Z][A-Z0-9_]{0,29}$")) {
-            throw new IllegalArgumentException("Invalid table name.");
-        }
-        return tableName;
-    }
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Router, NavigationEnd } from '@angular/router';
+import { filter } from 'rxjs/operators';
 
-    private String buildCreateTableQuery(String tableName, List<String> columns) {
-        String columnsDefinition = columns.stream()
-                .map(column -> column + " VARCHAR2(255)")
-                .collect(Collectors.joining(", "));
-        return "CREATE TABLE " + tableName + " (" + columnsDefinition + ")";
-    }
+@Injectable({
+  providedIn: 'root',
+})
+export class AuditService {
+  private auditUrl = 'http://localhost:8080/api/audit';
 
-    private void insertRowIntoTable(String tableName, List<String> columns, String[] rowValues) {
-        String columnNames = String.join(", ", columns);
-        String values = Arrays.stream(rowValues)
-                .map(value -> "'" + value.trim().replace("'", "''") + "'") // Escape single quotes
-                .collect(Collectors.joining(", "));
-        String insertQuery = "INSERT INTO " + tableName + " (" + columnNames + ") VALUES (" + values + ")";
-        jdbcTemplate.execute(insertQuery);
-    }
+  constructor(private http: HttpClient, private router: Router) {
+    // Capture navigation events
+    this.router.events
+      .pipe(filter((event) => event instanceof NavigationEnd))
+      .subscribe((event: any) => {
+        const section = event.urlAfterRedirects.split('/').pop();
+        this.logNavigation(section);
+      });
+  }
+
+  logAction(action: string, notes: string) {
+    const username = localStorage.getItem('username') || 'Guest';
+    const section = this.router.url.split('/').pop(); // Dynamically fetch the current section
+
+    const payload = {
+      username: username,
+      section: section || 'Unknown Section',
+      action: action,
+      notes: notes,
+      timestamp: new Date(),
+    };
+
+    this.http.post(this.auditUrl, payload).subscribe({
+      next: (response) => console.log('Audit logged:', response),
+      error: (error) => console.error('Error logging audit:', error),
+    });
+  }
+
+  private logNavigation(section: string) {
+    const username = localStorage.getItem('username') || 'Guest';
+    const payload = {
+      username: username,
+      section: section || 'Unknown Section',
+      action: 'Navigation',
+      notes: `Navigated to ${section}`,
+      timestamp: new Date(),
+    };
+
+    this.http.post(this.auditUrl, payload).subscribe({
+      next: (response) => console.log('Navigation logged:', response),
+      error: (error) => console.error('Error logging navigation:', error),
+    });
+  }
 }
 
 
 ⸻
 
-Frontend (HTML)
+2. Use AuditService in Your Components
 
-Save this as upload.html in src/main/resources/static.
+Now, you don’t need to write separate methods for auditing in every component. Instead, use the service dynamically:
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>File Upload</title>
-</head>
-<body>
-    <h1>Upload CSV File</h1>
-    <form action="/api/upload" method="post" enctype="multipart/form-data">
-        <label for="file">Choose CSV File:</label>
-        <input type="file" id="file" name="file" accept=".csv" required>
-        <br><br>
-        <label for="tableName">Table Name:</label>
-        <input type="text" id="tableName" name="tableName" required>
-        <br><br>
-        <button type="submit">Upload</button>
-    </form>
-</body>
-</html>
+import { Component } from '@angular/core';
+import { AuditService } from '../services/audit.service';
+
+@Component({
+  selector: 'app-manage-company',
+  templateUrl: './manage-company.component.html',
+  styleUrls: ['./manage-company.component.css'],
+})
+export class ManageCompanyComponent {
+  constructor(private auditService: AuditService) {}
+
+  handleAction(action: string, notes: string) {
+    this.auditService.logAction(action, notes);
+  }
+}
 
 
 ⸻
 
-Application Configuration
+3. Update HTML with Dynamic Actions
 
-Dependencies (pom.xml)
+You can pass dynamic actions to the centralized service.
 
-Ensure the following dependencies are present:
-
-<dependencies>
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-web</artifactId>
-    </dependency>
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-data-jpa</artifactId>
-    </dependency>
-    <dependency>
-        <groupId>com.oracle.database.jdbc</groupId>
-        <artifactId>ojdbc8</artifactId>
-        <scope>runtime</scope>
-    </dependency>
-</dependencies>
-
-Configuration (application.properties)
-
-Configure the Oracle database connection:
-
-spring.datasource.url=jdbc:oracle:thin:@<hostname>:<port>:<service_name>
-spring.datasource.username=<your_username>
-spring.datasource.password=<your_password>
-spring.datasource.driver-class-name=oracle.jdbc.OracleDriver
+<main>
+  <div class="container">
+    <div class="tools">
+      <img
+        src="assets/icons/edit.png"
+        alt="edit"
+        title="edit"
+        (click)="handleAction('Edit', 'Company edited')"
+      />
+      <img
+        src="assets/icons/delete.png"
+        alt="Delete"
+        title="Delete"
+        (click)="handleAction('Delete', 'Company deleted')"
+      />
+      <img
+        src="assets/icons/update.png"
+        alt="Update"
+        title="Update"
+        (click)="handleAction('Update', 'Company updated')"
+      />
+    </div>
+  </div>
+</main>
 
 
 ⸻
 
-Testing
-	1.	Run the Spring Boot application.
-	2.	Open http://localhost:8080/upload.html in a browser.
-	3.	Select a CSV file and enter a valid table name.
-	4.	Click the upload button.
-	5.	Verify the table and data in Oracle SQL Developer.
+Backend (Dynamic Support)
 
-Let me know if any issues persist!
+1. Enhance Audit Controller
+
+The backend already supports a generic logging mechanism. Ensure it dynamically handles all components and operations.
+
+@RestController
+@RequestMapping("/api/audit")
+public class AuditController {
+
+    @Autowired
+    private AuditLogRepository auditLogRepository;
+
+    @PostMapping
+    public ResponseEntity<String> logAction(@RequestBody AuditLog auditLog) {
+        auditLog.setTimestamp(LocalDateTime.now());
+        auditLogRepository.save(auditLog);
+        return ResponseEntity.status(HttpStatus.CREATED).body("Audit logged successfully.");
+    }
+}
+
+2. Add an Enum or Constant for Sections (Optional)
+
+If you want stricter control over section names, maintain a list of valid section names in the backend.
+
+⸻
+
+Database (No Change)
+
+The audit_rud table already supports a dynamic structure:
+
+CREATE TABLE audit_rud (
+    id NUMBER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    username VARCHAR2(255),
+    section VARCHAR2(255),
+    action VARCHAR2(255),
+    notes VARCHAR2(1000),
+    timestamp TIMESTAMP
+);
 
 
+⸻
 
-Would you like additional details on a specific part of the implementation?
+Dynamic Auditing Across the Application
+
+Now, the system is set up to:
+	1.	Automatically log navigation (via Angular Router events).
+	2.	Dynamically log actions using a centralized AuditService.
+	3.	Easily scale to future components and actions without additional duplication.
+
+Let me know if you’d like further enhancements!
