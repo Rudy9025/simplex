@@ -1,187 +1,277 @@
-To implement a dynamic and reusable auditing system without duplicating methods in every component, you can use a more centralized approach. Here’s how you can achieve this:
+/* Scaled down version of RiccardoRapelli's switch */
 
-⸻
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+}
 
-Frontend (Dynamic Auditing)
+.switch #input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
 
-1. Use Angular Router Events to Track Navigation
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #2196f3;
+  transition: 0.4s;
+  z-index: 0;
+  overflow: hidden;
+}
 
-Listen to router events to capture which component the user navigates to dynamically.
+.sun-moon {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 3px;
+  bottom: 3px;
+  background-color: yellow;
+  transition: 0.4s;
+}
 
-2. Create a Global Event Emitter for User Actions
+#input:checked + .slider {
+  background-color: black;
+}
 
-Instead of adding methods like onEdit, onDelete in every component, centralize the auditing logic in a shared service and trigger it dynamically using Angular’s event emitter.
+#input:focus + .slider {
+  box-shadow: 0 0 1px #2196f3;
+}
 
-⸻
+#input:checked + .slider .sun-moon {
+  transform: translateX(18px);
+  background-color: white;
+  animation: rotate-center 0.6s ease-in-out both;
+}
 
-Implementation
+.moon-dot {
+  opacity: 0;
+  transition: 0.4s;
+  fill: gray;
+}
 
-1. Create a Central AuditService
+#input:checked + .slider .sun-moon .moon-dot {
+  opacity: 1;
+}
 
-This service will capture both navigation and user actions dynamically.
+.slider.round {
+  border-radius: 22px;
+}
 
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Router, NavigationEnd } from '@angular/router';
-import { filter } from 'rxjs/operators';
+.slider.round .sun-moon {
+  border-radius: 50%;
+}
 
-@Injectable({
-  providedIn: 'root',
-})
-export class AuditService {
-  private auditUrl = 'http://localhost:8080/api/audit';
+/* Moon dots */
+#moon-dot-1 {
+  left: 6px;
+  top: 2px;
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  z-index: 4;
+}
 
-  constructor(private http: HttpClient, private router: Router) {
-    // Capture navigation events
-    this.router.events
-      .pipe(filter((event) => event instanceof NavigationEnd))
-      .subscribe((event: any) => {
-        const section = event.urlAfterRedirects.split('/').pop();
-        this.logNavigation(section);
-      });
+#moon-dot-2 {
+  left: 1px;
+  top: 6px;
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  z-index: 4;
+}
+
+#moon-dot-3 {
+  left: 10px;
+  top: 12px;
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  z-index: 4;
+}
+
+/* Light rays */
+#light-ray-1 {
+  left: -5px;
+  top: -5px;
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  z-index: -1;
+  fill: white;
+  opacity: 10%;
+}
+
+#light-ray-2 {
+  left: -50%;
+  top: -50%;
+  position: absolute;
+  width: 35px;
+  height: 35px;
+  z-index: -1;
+  fill: white;
+  opacity: 10%;
+}
+
+#light-ray-3 {
+  left: -10px;
+  top: -10px;
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  z-index: -1;
+  fill: white;
+  opacity: 10%;
+}
+
+/* Clouds */
+.cloud-light,
+.cloud-dark {
+  position: absolute;
+  animation-name: cloud-move;
+  animation-duration: 6s;
+  animation-iteration-count: infinite;
+  fill: #eee;
+}
+
+.cloud-dark {
+  fill: #ccc;
+  animation-delay: 1s;
+}
+
+#cloud-1 {
+  left: 20px;
+  top: 10px;
+  width: 26px;
+}
+
+#cloud-2 {
+  left: 30px;
+  top: 6px;
+  width: 13px;
+}
+
+#cloud-3 {
+  left: 12px;
+  top: 15px;
+  width: 20px;
+}
+
+#cloud-4 {
+  left: 24px;
+  top: 11px;
+  width: 26px;
+}
+
+#cloud-5 {
+  left: 32px;
+  top: 9px;
+  width: 13px;
+}
+
+#cloud-6 {
+  left: 14px;
+  top: 17px;
+  width: 20px;
+}
+
+@keyframes cloud-move {
+  0% {
+    transform: translateX(0px);
   }
 
-  logAction(action: string, notes: string) {
-    const username = localStorage.getItem('username') || 'Guest';
-    const section = this.router.url.split('/').pop(); // Dynamically fetch the current section
-
-    const payload = {
-      username: username,
-      section: section || 'Unknown Section',
-      action: action,
-      notes: notes,
-      timestamp: new Date(),
-    };
-
-    this.http.post(this.auditUrl, payload).subscribe({
-      next: (response) => console.log('Audit logged:', response),
-      error: (error) => console.error('Error logging audit:', error),
-    });
+  40% {
+    transform: translateX(3px);
   }
 
-  private logNavigation(section: string) {
-    const username = localStorage.getItem('username') || 'Guest';
-    const payload = {
-      username: username,
-      section: section || 'Unknown Section',
-      action: 'Navigation',
-      notes: `Navigated to ${section}`,
-      timestamp: new Date(),
-    };
+  80% {
+    transform: translateX(-3px);
+  }
 
-    this.http.post(this.auditUrl, payload).subscribe({
-      next: (response) => console.log('Navigation logged:', response),
-      error: (error) => console.error('Error logging navigation:', error),
-    });
+  100% {
+    transform: translateX(0px);
   }
 }
 
+/* Stars */
+.stars {
+  transform: translateY(-20px);
+  opacity: 0;
+  transition: 0.4s;
+}
 
-⸻
+.star {
+  fill: white;
+  position: absolute;
+  transition: 0.4s;
+  animation-name: star-twinkle;
+  animation-duration: 2s;
+  animation-iteration-count: infinite;
+}
 
-2. Use AuditService in Your Components
+#input:checked + .slider .stars {
+  transform: translateY(0);
+  opacity: 1;
+}
 
-Now, you don’t need to write separate methods for auditing in every component. Instead, use the service dynamically:
+#star-1 {
+  width: 14px;
+  top: 2px;
+  left: 2px;
+  animation-delay: 0.3s;
+}
 
-import { Component } from '@angular/core';
-import { AuditService } from '../services/audit.service';
+#star-2 {
+  width: 4px;
+  top: 10px;
+  left: 2px;
+}
 
-@Component({
-  selector: 'app-manage-company',
-  templateUrl: './manage-company.component.html',
-  styleUrls: ['./manage-company.component.css'],
-})
-export class ManageCompanyComponent {
-  constructor(private auditService: AuditService) {}
+#star-3 {
+  width: 8px;
+  top: 14px;
+  left: 6px;
+  animation-delay: 0.6s;
+}
 
-  handleAction(action: string, notes: string) {
-    this.auditService.logAction(action, notes);
+#star-4 {
+  width: 12px;
+  top: 0px;
+  left: 12px;
+  animation-delay: 1.3s;
+}
+
+@keyframes star-twinkle {
+  0% {
+    transform: scale(1);
+  }
+
+  40% {
+    transform: scale(1.2);
+  }
+
+  80% {
+    transform: scale(0.8);
+  }
+
+  100% {
+    transform: scale(1);
   }
 }
 
+@keyframes rotate-center {
+  0% {
+    transform: rotate(0);
+  }
 
-⸻
-
-3. Update HTML with Dynamic Actions
-
-You can pass dynamic actions to the centralized service.
-
-<main>
-  <div class="container">
-    <div class="tools">
-      <img
-        src="assets/icons/edit.png"
-        alt="edit"
-        title="edit"
-        (click)="handleAction('Edit', 'Company edited')"
-      />
-      <img
-        src="assets/icons/delete.png"
-        alt="Delete"
-        title="Delete"
-        (click)="handleAction('Delete', 'Company deleted')"
-      />
-      <img
-        src="assets/icons/update.png"
-        alt="Update"
-        title="Update"
-        (click)="handleAction('Update', 'Company updated')"
-      />
-    </div>
-  </div>
-</main>
-
-
-⸻
-
-Backend (Dynamic Support)
-
-1. Enhance Audit Controller
-
-The backend already supports a generic logging mechanism. Ensure it dynamically handles all components and operations.
-
-@RestController
-@RequestMapping("/api/audit")
-public class AuditController {
-
-    @Autowired
-    private AuditLogRepository auditLogRepository;
-
-    @PostMapping
-    public ResponseEntity<String> logAction(@RequestBody AuditLog auditLog) {
-        auditLog.setTimestamp(LocalDateTime.now());
-        auditLogRepository.save(auditLog);
-        return ResponseEntity.status(HttpStatus.CREATED).body("Audit logged successfully.");
-    }
+  100% {
+    transform: rotate(360deg);
+  }
 }
-
-2. Add an Enum or Constant for Sections (Optional)
-
-If you want stricter control over section names, maintain a list of valid section names in the backend.
-
-⸻
-
-Database (No Change)
-
-The audit_rud table already supports a dynamic structure:
-
-CREATE TABLE audit_rud (
-    id NUMBER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    username VARCHAR2(255),
-    section VARCHAR2(255),
-    action VARCHAR2(255),
-    notes VARCHAR2(1000),
-    timestamp TIMESTAMP
-);
-
-
-⸻
-
-Dynamic Auditing Across the Application
-
-Now, the system is set up to:
-	1.	Automatically log navigation (via Angular Router events).
-	2.	Dynamically log actions using a centralized AuditService.
-	3.	Easily scale to future components and actions without additional duplication.
-
-Let me know if you’d like further enhancements!
