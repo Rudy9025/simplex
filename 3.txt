@@ -1,11 +1,33 @@
-logout(): void {
-  const username = localStorage.getItem('uid') || 'Guest';
+logAudit(section: string, action: string, notes: string): Observable<any> {
+  const username = localStorage.getItem('uid')?.trim() || 'Guest';
+  const payload = {
+    username,
+    sectionSubSection: section || 'Unknown Section',
+    action,
+    notes,
+    dateTime: new Date()
+  };
+  return this.http.post(this.auditUrl, payload);
+}
 
-  this.auditService.logAudit('Logout', 'Logout', `User ${username} clicked logout`)
-    .add(() => {
-      this.userLogsService.trackLogout();
-      localStorage.removeItem('uid');
-      this.router.navigate(['/']);
+
+logout(): void {
+  const section = this.router.url.split('/').pop();
+
+  this.auditService.logAudit(section || 'Unknown Section', 'Logout', 'User clicked logout')
+    .subscribe({
+      next: (res) => {
+        console.log('Audit logged:', res);
+        this.userLogsService.trackLogout();
+        localStorage.removeItem('uid');
+        this.router.navigate(['/']);
+      },
+      error: (err) => {
+        console.error('Audit log failed:', err);
+        this.userLogsService.trackLogout();
+        localStorage.removeItem('uid');
+        this.router.navigate(['/']);
+      }
     });
 }
 
