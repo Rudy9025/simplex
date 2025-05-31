@@ -1,59 +1,31 @@
-/* From Uiverse.io by alexruix */ 
-/* The switch - the box around the slider */
-.switch {
-  font-size: 17px;
-  position: relative;
-  display: inline-block;
-  width: 3.5em;
-  height: 2em;
-}
+// In AuditService
+logAudit(section: string, action: string, notes: string): void {
+  const username = localStorage.getItem('uid') || 'Guest';
+  const payload = {
+    username,
+    sectionSubSection: section || 'Unknown Section',
+    action,
+    notes,
+    dateTime: new Date(),
+  };
 
-/* Hide default HTML checkbox */
-.switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-/* The slider */
-.slider {
-  --background: #28096b;
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: var(--background);
-  transition: .5s;
-  border-radius: 30px;
-}
-
-.slider:before {
-  position: absolute;
-  content: "";
-  height: 1.4em;
-  width: 1.4em;
-  border-radius: 50%;
-  left: 10%;
-  bottom: 15%;
-  box-shadow: inset 8px -4px 0px 0px #fff000;
-  background: var(--background);
-  transition: .5s;
-}
-
-input:checked + .slider {
-  background-color: #522ba7;
-}
-
-input:checked + .slider:before {
-  transform: translateX(100%);
-  box-shadow: inset 15px -4px 0px 15px #fff000;
+  this.http.post(this.auditUrl, payload).subscribe({
+    next: (res) => console.log('Audit logged', res),
+    error: (err) => console.error('Error logging audit', err),
+  });
 }
 
 
-<!-- From Uiverse.io by alexruix --> 
-<label class="switch">
-    <input type="checkbox">
-    <span class="slider"></span>
-</label>
+
+
+
+
+
+
+
+
+
+
+this.auditService.logAudit('Logout', 'Logout', 'User clicked logout');
+localStorage.removeItem('uid');
+this.router.navigate(['/']);
