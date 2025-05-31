@@ -1,3 +1,24 @@
+logout(): void {
+  const username = localStorage.getItem('uid') || 'Guest';
+
+  this.auditService.logAudit('Logout', 'Logout', `User ${username} clicked logout`)
+    .add(() => {
+      this.userLogsService.trackLogout();
+      localStorage.removeItem('uid');
+      this.router.navigate(['/']);
+    });
+}
+
+
+
+
+
+
+
+
+
+
+
 // In AuditService
 logAudit(section: string, action: string, notes: string): void {
   const username = localStorage.getItem('uid') || 'Guest';
